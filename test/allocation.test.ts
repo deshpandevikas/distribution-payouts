@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import { allocate, AllocationError } from "../src/core/allocation.js";
 import type { AllocationInput } from "../src/core/types.js";
 
@@ -56,10 +57,13 @@ describe("allocate", () => {
     expect(byId["a"]).toBe(100);
   });
 
-  it("handles all-zero basis: distributes nothing", () => {
-    const result = allocate(100, [inv("a", 0), inv("b", 0)]);
+  it("throws when all basis are zero and total > 0", () => {
+    expect(() => allocate(100, [inv("a", 0), inv("b", 0)])).toThrow(AllocationError);
+  });
+
+  it("does NOT throw when total is also zero (zero basis, zero total)", () => {
+    const result = allocate(0, [inv("a", 0), inv("b", 0)]);
     expect(result.every((r) => r.amountCents === 0)).toBe(true);
-    // sum is 0, not 100  -  this is intentional (zero-basis case)
     const sum = result.reduce((s, r) => s + r.amountCents, 0);
     expect(sum).toBe(0);
   });

@@ -3,18 +3,20 @@
  * pro rata by their basis units.
  *
  * Algorithm (agreed-decisions.md #9):
- *   1. Compute each investor's exact share = totalCents * (basis / sumBasis).
- *   2. Floor each share to cents.
- *   3. Distribute leftover cents (totalCents - sum of floors) one cent at a time
- *      to the investors with the largest fractional remainders.
- *   4. Ties in fractional remainder broken by investorId ascending (lexicographic).
+ *   1. Compute floor = floor(totalCents * basisUnits / sumBasis) using integer division.
+ *   2. Compute remainder = (totalCents * basisUnits) % sumBasis (integer, no float).
+ *   3. Distribute leftover cents one at a time to investors with the largest remainders.
+ *   4. Ties broken by investorId ascending (lexicographic).
+ *
+ * All arithmetic uses BigInt to avoid float rounding on large totals * large bases.
  *
  * Guarantees:
  *   - Sum of all allocations === totalCents exactly.
- *   - No floats in output  -  all values are integer cents.
- *   - Investors with a zero-cent share are included in the output (amount = 0)
- *     so the caller can log them per agreed-decisions.md #13.
- *   - No randomness, no I/O  -  pure function.
+ *   - No floats in output - all values are integer cents.
+ *   - Throws AllocationError on empty inputs, negative basis, duplicate ids,
+ *     or all-zero basis with nonzero total (money would vanish silently).
+ *   - Zero-cent shares are included in output for logging per agreed-decisions.md #13.
+ *   - No randomness, no I/O - pure function.
  */
 
 import { assertCents } from "./money.js";
@@ -31,7 +33,7 @@ export class AllocationError extends Error {
  * Allocate `totalCents` across `inputs` pro rata by `basisUnits`.
  *
  * @param totalCents  Total distribution amount in integer cents.
- * @param inputs      Each investor with their basis units (must be > 0 for all entries).
+ * @param inputs      Each investor with their basis units.
  * @returns           One AllocatedPayment per input, in the same order.
  *                    Sum of amountCents === totalCents.
  */
@@ -45,40 +47,60 @@ export function allocate(
     throw new AllocationError("inputs must not be empty");
   }
 
+  // Validate basis units and collect unique id check.
+  const seenIds = new Set<string>();
   for (const { investor, basisUnits } of inputs) {
     if (!Number.isFinite(basisUnits) || basisUnits < 0) {
       throw new AllocationError(
         `investor ${investor.id}: basisUnits must be a non-negative finite number, got ${basisUnits}`,
       );
     }
+    if (!Number.isInteger(basisUnits)) {
+      throw new AllocationError(
+        `investor ${investor.id}: basisUnits must be an integer, got ${basisUnits}`,
+      );
+    }
+    if (seenIds.has(investor.id)) {
+      throw new AllocationError(
+        `duplicate investor id: ${investor.id}`,
+      );
+    }
+    seenIds.add(investor.id);
   }
 
   const sumBasis = inputs.reduce((acc, i) => acc + i.basisUnits, 0);
 
   if (sumBasis === 0) {
-    // Every investor has zero basis  -  distribute nothing to anyone.
+    if (totalCents > 0) {
+      throw new AllocationError(
+        `all investors have zero basis units but totalCents is ${totalCents} - money would vanish`,
+      );
+    }
+    // totalCents === 0: nothing to distribute, zero for everyone.
     return inputs.map(({ investor }) => ({ investor, amountCents: 0 }));
   }
 
-  // Step 1 + 2: exact share and floor.
+  // Use BigInt for integer division to avoid float rounding.
+  const bigTotal = BigInt(totalCents);
+  const bigSum = BigInt(sumBasis);
+
   const working = inputs.map(({ investor, basisUnits }) => {
-    const exact = (totalCents * basisUnits) / sumBasis;
-    const floored = Math.floor(exact);
-    const remainder = exact - floored;
+    const bigBasis = BigInt(basisUnits);
+    const product = bigTotal * bigBasis;
+    const floored = Number(product / bigSum);       // safe: <= totalCents <= MAX_SAFE_INTEGER
+    const remainder = Number(product % bigSum);     // safe: < sumBasis
     return { investor, floored, remainder };
   });
 
-  // Step 3: how many leftover cents to distribute?
+  // Distribute leftover cents: sort by remainder desc, tie-break by investorId asc.
   const sumFloored = working.reduce((acc, w) => acc + w.floored, 0);
   let leftover = totalCents - sumFloored;
 
-  // Step 4: sort by remainder desc, tie-break by investorId asc.
   const sorted = [...working].sort((a, b) => {
     if (b.remainder !== a.remainder) return b.remainder - a.remainder;
     return a.investor.id < b.investor.id ? -1 : a.investor.id > b.investor.id ? 1 : 0;
   });
 
-  // Distribute leftover cents one at a time to the top-remainder investors.
   const bonusCents = new Map<string, number>();
   for (const w of sorted) {
     if (leftover <= 0) break;
@@ -86,18 +108,16 @@ export function allocate(
     leftover--;
   }
 
-  // Build output in original input order.
   const result: AllocatedPayment[] = working.map(({ investor, floored }) => ({
     investor,
     amountCents: floored + (bonusCents.get(investor.id) ?? 0),
   }));
 
-  // Invariant check: sum must equal totalCents exactly.
+  // Invariant guard.
   const total = result.reduce((acc, r) => acc + r.amountCents, 0);
   if (total !== totalCents) {
-    // Should be unreachable; guard against floating-point edge cases in the algorithm.
     throw new AllocationError(
-      `allocation sum ${total} !== totalCents ${totalCents}  -  bug in allocator`,
+      `allocation sum ${total} !== totalCents ${totalCents} - bug in allocator`,
     );
   }
 
