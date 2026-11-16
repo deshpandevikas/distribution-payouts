@@ -114,10 +114,20 @@ export class FakeBank implements Bank {
     amountCents: Cents,
     _bankDetails: string,
   ): Promise<BankSendResponse> {
-    // Idempotency: replay committed outcome.
+    // Idempotency: only replay committed outcomes (ACCEPTED, REJECTED_PERMANENT).
+    // Transient rejects and unresolved timeouts are not committed - a retry with
+    // the same key gets a fresh roll. This matches real bank behaviour: a transient
+    // reject means the bank did not process the request, so the same key is safe to retry.
     const existing = this.records.get(key);
     if (existing) {
-      return this.replaySend(existing);
+      if (existing.outcome === "ACCEPTED") {
+        return { type: "ACCEPTED" };
+      }
+      if (existing.outcome === "REJECTED_PERMANENT") {
+        return { type: "REJECTED_PERMANENT", reason: "fake-bank: permanent rejection (replay)" };
+      }
+      // REJECTED_TRANSIENT, LYING_TRANSIENT, TIMEOUT: not committed, roll fresh below.
+      this.records.delete(key);
     }
 
     // Fresh send  -  roll outcomes.
@@ -229,17 +239,4 @@ export class FakeBank implements Bank {
   // Private helpers
   // -------------------------------------------------------------------------
 
-  private replaySend(record: KeyRecord): BankSendResponse {
-    switch (record.outcome) {
-      case "ACCEPTED":
-        return { type: "ACCEPTED" };
-      case "REJECTED_PERMANENT":
-        return { type: "REJECTED_PERMANENT", reason: "fake-bank: permanent rejection (replay)" };
-      case "REJECTED_TRANSIENT":
-      case "LYING_TRANSIENT":
-        return { type: "REJECTED_TRANSIENT", reason: "fake-bank: transient rejection (replay)" };
-      case "TIMEOUT":
-        return { type: "TIMEOUT" };
-    }
-  }
 }
