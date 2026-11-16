@@ -69,4 +69,9 @@ export class MemoryStore implements Store {
       .filter((e) => e.distributionId === distributionId)
       .map((e) => ({ ...e }));
   }
+
+  transition(payment: Payment, entry: AuditEntry): void {
+    this.savePayment(payment);
+    this.appendAudit(entry);
+  }
 }

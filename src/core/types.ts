@@ -265,4 +265,10 @@ export interface Store {
   listPayments(distributionId: DistributionId): Payment[];
   appendAudit(entry: AuditEntry): void;
   listAudit(distributionId: DistributionId): AuditEntry[];
+  /**
+   * Atomically write a payment state change and its audit entry.
+   * In MemoryStore this is synchronous and trivially atomic.
+   * In SQLite (Phase 5) this becomes a single transaction.
+   */
+  transition(payment: Payment, entry: AuditEntry): void;
 }
