@@ -147,10 +147,14 @@ export class Runner {
     }
 
     // Resume any payments that were in-flight (SENDING/UNKNOWN) from a prior run.
+    // Track recovered payment IDs so processPayment can route SENDING to status check
+    // instead of blind resend (agreed-decisions.md #2).
+    const recoveredIds = new Set<PaymentId>();
     for (const id of paymentIds) {
       const payment = this.store.getPayment(id)!;
       if (payment.state === "SENDING" || payment.state === "UNKNOWN") {
         await this.applyAndSave(payment, { type: "RECOVERY_ON_RESTART" });
+        recoveredIds.add(id);
       }
     }
 
@@ -158,7 +162,7 @@ export class Runner {
     for (const id of paymentIds) {
       const payment = this.store.getPayment(id)!;
       if (!TERMINAL_STATES.has(payment.state)) {
-        await this.processPayment(payment);
+        await this.processPayment(payment, recoveredIds.has(id));
       }
       // Drain async events mid-run after each payment completes.
       await this.deliverAsyncEvents(paymentIds);
@@ -176,12 +180,15 @@ export class Runner {
   // Per-payment processing
   // -------------------------------------------------------------------------
 
-  private async processPayment(payment: Payment): Promise<void> {
+  private async processPayment(payment: Payment, isRecovered = false): Promise<void> {
     // Loop until the payment reaches a terminal state.
     // STATUS_NOT_FOUND outside the settle window can bounce UNKNOWN -> SENDING,
     // so we need to re-enter sendPayment after checkStatus in that case.
     const MAX_ITERATIONS = 1000; // hard safety cap against infinite loops
     let iterations = 0;
+    // On first iteration of a recovered SENDING payment, status-check first.
+    // Never blind resend on restart (agreed-decisions.md #2).
+    let firstIter = true;
     while (!TERMINAL_STATES.has(payment.state)) {
       if (++iterations > MAX_ITERATIONS) {
         throw new Error(
@@ -192,7 +199,12 @@ export class Runner {
       if (payment.state === "CREATED") {
         payment = await this.recordIntent(payment);
       } else if (payment.state === "SENDING") {
-        payment = await this.sendPayment(payment);
+        if (isRecovered && firstIter) {
+          // Recovery path: status check first, never blind resend.
+          payment = await this.checkStatus(payment);
+        } else {
+          payment = await this.sendPayment(payment);
+        }
       } else if (payment.state === "UNKNOWN") {
         payment = await this.checkStatus(payment);
       } else {
@@ -200,6 +212,7 @@ export class Runner {
           `processPayment: unhandled non-terminal state ${payment.state} for payment ${payment.id}`,
         );
       }
+      firstIter = false;
     }
   }
 

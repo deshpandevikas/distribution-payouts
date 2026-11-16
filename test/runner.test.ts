@@ -202,7 +202,10 @@ describe("Runner", () => {
       expect(paymentAfterCrash!.state).toBe("SENDING");
 
       // Restart over same store + bank
-      const runner2 = new Runner({ store, bank, clock, rng: rngFromSeed(2) });
+      const runner2 = new Runner({
+        store, bank, clock, rng: rngFromSeed(2),
+        config: { settleWindowMs: 0 }, // exit window immediately so NOT_FOUND triggers resend
+      });
       const result = await runner2.run(dist);
 
       expect(result.status).toBe("COMPLETED");
