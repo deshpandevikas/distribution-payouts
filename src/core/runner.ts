@@ -448,8 +448,7 @@ export class Runner {
       updatedAt: this.clock.now(),
     };
 
-    this.store.savePayment(updated);
-    this.store.appendAudit(result.auditEntry);
+    this.store.transition(updated, result.auditEntry);
 
     if (result.alert) {
       this.onAlert(result.auditEntry);
