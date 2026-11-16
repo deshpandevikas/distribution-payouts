@@ -64,6 +64,12 @@ export interface FakeBankConfig {
    * Set to false for break-it tests that need to exercise double-settlement.
    */
   dedupe: boolean;
+  /**
+   * Number of status checks that return NOT_FOUND before the bank reveals the
+   * real outcome. Simulates a bank that accepts but lags on status visibility.
+   * Default 0 (no lag).
+   */
+  lagChecks: number;
 }
 
 export const DEFAULT_FAKE_BANK_CONFIG: FakeBankConfig = {
@@ -76,6 +82,7 @@ export const DEFAULT_FAKE_BANK_CONFIG: FakeBankConfig = {
   lyingTransientRate: 0,
   duplicateConfirmRate: 0,
   dedupe: true,
+  lagChecks: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -118,6 +125,7 @@ interface KeyRecord {
 export class FakeBank implements Bank {
   private readonly records = new Map<IdempotencyKey, KeyRecord>();
   private readonly asyncQueue: AsyncBankEvent[] = [];
+  private readonly lagCheckCounts = new Map<IdempotencyKey, number>();
   private readonly rng: Rng;
   private readonly config: FakeBankConfig;
 
@@ -202,6 +210,15 @@ export class FakeBank implements Bank {
     const timeoutR = this.rng.next();
     if (timeoutR < this.config.statusTimeoutRate) {
       return { type: "TIMEOUT" };
+    }
+
+    // Lag mode: return NOT_FOUND for the first N checks, then reveal truth.
+    if (this.config.lagChecks > 0) {
+      const count = this.lagCheckCounts.get(key) ?? 0;
+      if (count < this.config.lagChecks) {
+        this.lagCheckCounts.set(key, count + 1);
+        return { type: "NOT_FOUND" };
+      }
     }
 
     const record = this.records.get(key);

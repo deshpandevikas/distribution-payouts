@@ -27,6 +27,7 @@ function makePayment(id: string, key: string, state: Payment["state"], amountCen
     statusChecks: 0,
     createdAt: 0,
     updatedAt: 1,
+    lastSentAt: 0,
   };
 }
 

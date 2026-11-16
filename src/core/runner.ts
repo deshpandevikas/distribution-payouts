@@ -139,6 +139,7 @@ export class Runner {
           statusChecks: 0,
           createdAt: this.clock.now(),
           updatedAt: this.clock.now(),
+          lastSentAt: 0,
         };
         this.store.savePayment(payment);
       }
@@ -247,6 +248,10 @@ export class Runner {
       ? buildIdempotencyKey(payment.distributionId, payment.investorId, payment.instructionNo, payment.transientRetries)
       : payment.idempotencyKey;
 
+    // Record lastSentAt before the bank call.
+    payment = { ...payment, lastSentAt: this.clock.now() };
+    this.store.savePayment(payment);
+
     const response = await this.bank.send(key, payment.amountCents, payment.bankDetails);
 
     if (this.crashAt === "afterBankCallBeforeRecord") {
@@ -339,7 +344,7 @@ export class Runner {
         return this.applyAndSave(payment, { type: "BANK_TIMEOUT" });
 
       case "NOT_FOUND": {
-        const age = this.clock.now() - payment.createdAt;
+        const age = this.clock.now() - payment.lastSentAt;
         const insideWindow = age < this.config.settleWindowMs;
 
         if (payment.state === "SENDING") {
@@ -469,9 +474,7 @@ export class Runner {
     const base = this.config.backoffBaseMs * Math.pow(2, attempt - 1);
     const jitter = 0.5 + 0.5 * this.rng.next();
     const delay = Math.round(base * jitter);
-    // In the harness the clock is fake so we just advance it; no real sleep.
-    // A real implementation would: await new Promise(r => setTimeout(r, delay));
-    void delay; // suppress unused warning in harness context
+    await this.clock.sleep(delay);
   }
 
   private onAlert(entry: AuditEntry): void {

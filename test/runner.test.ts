@@ -37,7 +37,7 @@ function makeRunner(overrides: {
     statusTimeoutRate: 0,
   });
   let now = 0;
-  const clock = { now: () => now++ };
+  const clock = { now: () => now++, sleep: async () => { now += 1; } };
   const rng = rngFromSeed(1);
   const runner = new Runner({
     store, bank, clock, rng,
@@ -139,7 +139,7 @@ describe("Runner", () => {
       let now = 0;
       const runner = new Runner({
         store, bank,
-        clock: { now: () => now++ },
+        clock: { now: () => now++, sleep: async () => { now += 1; } },
         rng: rngFromSeed(1),
         config: { maxTransientRetries: 3, backoffBaseMs: 0 },
       });
@@ -162,7 +162,7 @@ describe("Runner", () => {
       let now = 0;
       const runner = new Runner({
         store, bank,
-        clock: { now: () => now++ },
+        clock: { now: () => now++, sleep: async () => { now += 1; } },
         rng: rngFromSeed(1),
         config: { maxTransientRetries: 3, backoffBaseMs: 0 },
       });
@@ -185,7 +185,7 @@ describe("Runner", () => {
         statusTimeoutRate: 0,
       });
       let now = 0;
-      const clock = { now: () => now++ };
+      const clock = { now: () => now++, sleep: async () => { now += 1; } };
 
       const runner1 = new Runner({
         store, bank,
@@ -224,7 +224,7 @@ describe("Runner", () => {
       let now = 0;
       const runner = new Runner({
         store, bank,
-        clock: { now: () => now++ },
+        clock: { now: () => now++, sleep: async () => { now += 1; } },
         rng: rngFromSeed(1),
         config: { skipIntentRecord: true },
       });

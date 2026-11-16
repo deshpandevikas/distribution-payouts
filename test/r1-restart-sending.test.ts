@@ -46,7 +46,7 @@ describe("R1: restart in SENDING status-checks before resending", () => {
 
     const store = new MemoryStore();
     let now = 0;
-    const clock = { now: () => now++ };
+    const clock = { now: () => now++, sleep: async () => { now += 1; } };
 
     // Run 1: crash after intent recorded (payment is in SENDING)
     const runner1 = new Runner({
@@ -92,7 +92,7 @@ describe("R1: restart in SENDING status-checks before resending", () => {
 
     // Crash after bank call but before recording reply - payment stays SENDING
     const runner1 = new Runner({
-      store, bank, clock: { now: () => now++ },
+      store, bank, clock: { now: () => now++, sleep: async () => { now += 1; } },
       rng: { next: () => 0 },
       crashAt: "afterBankCallBeforeRecord",
     });
@@ -104,7 +104,7 @@ describe("R1: restart in SENDING status-checks before resending", () => {
     expect(store.listPayments("dist-r1b")[0]!.state).toBe("SENDING");
 
     const runner2 = new Runner({
-      store, bank, clock: { now: () => now++ },
+      store, bank, clock: { now: () => now++, sleep: async () => { now += 1; } },
       rng: { next: () => 0 },
       config: { settleWindowMs: 0 },
     });
