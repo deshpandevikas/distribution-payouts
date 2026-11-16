@@ -25,7 +25,7 @@ import type { CrashPoint } from "../src/core/runner.js";
 // ---------------------------------------------------------------------------
 
 async function runScenarioAndCheck(seed: number, crashAt?: CrashPoint) {
-  let scenario = generate(seed, { crashAt });
+  let scenario = generate(seed, { ...(crashAt !== undefined ? { crashAt } : {}) });
   scenario = await buildDistribution(scenario);
 
   const store = new MemoryStore();
@@ -39,7 +39,7 @@ async function runScenarioAndCheck(seed: number, crashAt?: CrashPoint) {
     clock,
     rng: rngFromSeed(seed + 2),
     config: scenario.runnerConfig,
-    crashAt: scenario.crashAt,
+    ...(scenario.crashAt !== undefined ? { crashAt: scenario.crashAt } : {}),
   });
 
   try {
@@ -52,7 +52,6 @@ async function runScenarioAndCheck(seed: number, crashAt?: CrashPoint) {
         clock,
         rng: rngFromSeed(seed + 3),
         config: { ...scenario.runnerConfig },
-        crashAt: undefined,
       });
       await runner2.run(scenario.distribution);
     } else {

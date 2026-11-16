@@ -98,12 +98,10 @@ async function runScenario(seed: number, opts: ReturnType<typeof parseArgs>) {
   let scenario = generate(seed, {
     bankConfig: {
       ...(opts.noStatusQuery ? { statusQueryEnabled: false } : {}),
-      // overwriteConflictingConfirm requires lying-transient sends to produce
-      // FAILED payments that later receive ASYNC_CONFIRM.
       ...(opts.breakIt.overwriteConflictingConfirm ? { lyingTransientRate: 0.5 } : {}),
     },
     runnerConfig: opts.breakIt,
-    crashAt: opts.crashAt,
+    ...(opts.crashAt !== undefined ? { crashAt: opts.crashAt } : {}),
   });
   scenario = await buildDistribution(scenario);
 
@@ -119,9 +117,9 @@ async function runScenario(seed: number, opts: ReturnType<typeof parseArgs>) {
     store,
     bank,
     clock,
-    rng: rngFromSeed(seed + 2), // separate RNG for runner backoff jitter
+    rng: rngFromSeed(seed + 2),
     config: scenario.runnerConfig,
-    crashAt: scenario.crashAt,
+    ...(scenario.crashAt !== undefined ? { crashAt: scenario.crashAt } : {}),
   });
 
   try {
@@ -134,8 +132,7 @@ async function runScenario(seed: number, opts: ReturnType<typeof parseArgs>) {
         bank,
         clock,
         rng: rngFromSeed(seed + 3),
-        config: { ...scenario.runnerConfig, skipIntentRecord: false }, // reset intent flag on restart
-        crashAt: undefined, // no second crash
+        config: { ...scenario.runnerConfig, skipIntentRecord: false },
       });
       await runner2.run(scenario.distribution);
     } else {

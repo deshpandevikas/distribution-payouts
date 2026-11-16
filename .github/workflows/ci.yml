@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Unit and property tests
+        run: npm test
+
+      - name: Harness fixed seeds
+        run: npm run harness -- --seeds=1,2,3,42,100,999,1234,5678,9999,10000
+
+      - name: Break-it flags each fail an invariant
+        run: |
+          for flag in skipIntentRecord timeoutAsFailure newKeyOnRetry overwriteConflictingConfirm resendWithoutStatusCheck; do
+            npm run harness -- --scenarios=50 --break-it=$flag \
+              && echo "ERROR: $flag did not fail any invariant" && exit 1 \
+              || echo "OK: $flag failed an invariant (exit 1 expected)"
+          done
+          echo "All 5 break-it flags confirmed failing."

@@ -4,17 +4,20 @@
   "description": "Distribution payout runner: learning project on failure-tolerant money workflows",
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "harness": "tsx harness/run.ts",
+    "harness:break": "tsx harness/run.ts --scenarios=200 --break-it"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "vitest": "^2.1.8",
-    "fast-check": "^3.22.0",
-    "@types/node": "^22.10.1",
-    "tsx": "^4.19.2"
+    "@types/node": "22.20.5",
+    "fast-check": "3.23.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "2.1.9"
   }
 }

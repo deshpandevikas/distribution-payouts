@@ -95,8 +95,10 @@ export interface TransitionResult {
 type TableKey = `${PaymentState}:${PaymentEvent["type"]}`;
 
 const ILLEGAL = (reason: string): IllegalOutcome => ({ kind: "ILLEGAL", reason });
-const MOVE = (toState: PaymentState, auditReason?: string): MoveOutcome => ({ kind: "MOVE", toState, auditReason });
-const NOOP = (auditReason?: string): NoopOutcome => ({ kind: "NOOP", auditReason });
+const MOVE = (toState: PaymentState, auditReason?: string): MoveOutcome =>
+  auditReason !== undefined ? { kind: "MOVE", toState, auditReason } : { kind: "MOVE", toState };
+const NOOP = (auditReason?: string): NoopOutcome =>
+  auditReason !== undefined ? { kind: "NOOP", auditReason } : { kind: "NOOP" };
 const HOLD = (auditReason: string): HoldOutcome => ({ kind: "HOLD", auditReason });
 const MR = (auditReason: string): ManualReviewOutcome => ({ kind: "MANUAL_REVIEW", auditReason });
 
@@ -303,8 +305,8 @@ export function applyEvent(
     event: event.type,
     fromState: payment.state,
     toState,
-    reason: reason ?? (cell.kind !== "NOOP" && cell.kind !== "MOVE" ? cell.auditReason : cell.auditReason),
     timestamp: clock.now(),
+    ...(reason !== undefined ? { reason } : {}),
   };
 
   return {

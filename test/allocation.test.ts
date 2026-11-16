@@ -36,7 +36,7 @@ describe("allocate", () => {
     const byId = Object.fromEntries(result.map((r) => [r.investor.id, r.amountCents]));
     // sum must be 10; 'a' should get the tie-broken extra cent
     expect(byId["a"]).toBe(4);
-    expect(byId["b"] + byId["c"]).toBe(6);
+    expect((byId["b"] ?? 0) + (byId["c"] ?? 0)).toBe(6);
   });
 
   it("handles unequal basis units", () => {
@@ -71,7 +71,7 @@ describe("allocate", () => {
 
   it("handles single investor gets everything", () => {
     const result = allocate(999, [inv("solo", 1)]);
-    expect(result[0].amountCents).toBe(999);
+    expect(result[0]!.amountCents).toBe(999);
   });
 
   it("throws on empty inputs", () => {

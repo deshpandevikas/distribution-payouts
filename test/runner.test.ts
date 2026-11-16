@@ -39,7 +39,11 @@ function makeRunner(overrides: {
   let now = 0;
   const clock = { now: () => now++ };
   const rng = rngFromSeed(1);
-  const runner = new Runner({ store, bank, clock, rng, config: overrides.config, crashAt: overrides.crashAt });
+  const runner = new Runner({
+    store, bank, clock, rng,
+    ...(overrides.config !== undefined ? { config: overrides.config } : {}),
+    ...(overrides.crashAt !== undefined ? { crashAt: overrides.crashAt } : {}),
+  });
   return { store, bank, clock, runner };
 }
 
@@ -93,7 +97,7 @@ describe("Runner", () => {
       const payments = store.listPayments("d3");
       // Only investor 'a' gets a payment record
       expect(payments).toHaveLength(1);
-      expect(payments[0].investorId).toBe("a");
+      expect(payments[0]!.investorId).toBe("a");
     });
   });
 
@@ -144,7 +148,7 @@ describe("Runner", () => {
       const result = await runner.run(dist);
 
       expect(result.status).toBe("COMPLETED");
-      expect(store.listPayments("d4")[0].state).toBe("CONFIRMED");
+      expect(store.listPayments("d4")[0]!.state).toBe("CONFIRMED");
     });
 
     it("moves to FAILED after retries exhausted", async () => {
@@ -167,7 +171,7 @@ describe("Runner", () => {
       const result = await runner.run(dist);
 
       expect(result.status).toBe("COMPLETED_WITH_EXCEPTIONS");
-      expect(store.listPayments("d5")[0].state).toBe("FAILED");
+      expect(store.listPayments("d5")[0]!.state).toBe("FAILED");
     });
   });
 
@@ -195,14 +199,14 @@ describe("Runner", () => {
 
       // Payment should be in SENDING (intent recorded before crash)
       const paymentAfterCrash = store.listPayments("d-crash")[0];
-      expect(paymentAfterCrash.state).toBe("SENDING");
+      expect(paymentAfterCrash!.state).toBe("SENDING");
 
       // Restart over same store + bank
       const runner2 = new Runner({ store, bank, clock, rng: rngFromSeed(2) });
       const result = await runner2.run(dist);
 
       expect(result.status).toBe("COMPLETED");
-      expect(store.listPayments("d-crash")[0].state).toBe("CONFIRMED");
+      expect(store.listPayments("d-crash")[0]!.state).toBe("CONFIRMED");
     });
   });
 
