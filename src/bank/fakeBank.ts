@@ -1,21 +1,23 @@
 /**
  * Fake bank implementation for testing and harness runs.
  *
- * Behaviour is driven entirely by injected Rng  -  no Math.random() here.
+ * Behaviour is driven entirely by injected Rng - no Math.random() here.
  * The same seed always produces the same sequence of outcomes.
  *
  * Failure modes configurable per instance:
  *   - permanent rejection rate
  *   - transient rejection rate
- *   - timeout rate  (send + status)
+ *   - timeout rate (send + status)
  *   - late async confirm rate (bank "confirms" after a timeout)
  *   - lying-transient rate: bank returns REJECTED_TRANSIENT but actually settles,
  *     then later sends ASYNC_CONFIRM (visible via drainAsyncEvents())
+ *   - dedupe: if false, every send is fresh regardless of prior outcome
  *   - status query enabled / disabled
  *
- * Idempotency: the bank records the first outcome for each key and replays
- * it on retries (deduplication). A second send with the same key that was
- * already ACCEPTED returns ACCEPTED again without double-settling.
+ * Idempotency (when dedupe=true, the default):
+ *   Only ACCEPTED and REJECTED_PERMANENT are committed outcomes.
+ *   REJECTED_TRANSIENT and unresolved TIMEOUT are not committed - a retry
+ *   with the same key rolls fresh, matching real bank behaviour.
  *
  * All data is fake. No real bank names or credentials anywhere.
  */
@@ -34,24 +36,29 @@ import type {
 // ---------------------------------------------------------------------------
 
 export interface FakeBankConfig {
-  /** 0–1 probability of permanent rejection on a fresh send. Default 0.05. */
+  /** 0-1 probability of permanent rejection on a fresh send. Default 0.05. */
   permanentRejectRate: number;
-  /** 0–1 probability of transient rejection on a fresh send. Default 0.1. */
+  /** 0-1 probability of transient rejection on a fresh send. Default 0.1. */
   transientRejectRate: number;
-  /** 0–1 probability of timeout on a fresh send. Default 0.1. */
+  /** 0-1 probability of timeout on a fresh send. Default 0.1. */
   timeoutRate: number;
-  /** 0–1 probability that a timed-out send eventually async-confirms. Default 0.5. */
+  /** 0-1 probability that a timed-out send eventually async-confirms. Default 0.5. */
   asyncConfirmRate: number;
-  /** 0–1 probability of timeout on a status query. Default 0.05. */
+  /** 0-1 probability of timeout on a status query. Default 0.05. */
   statusTimeoutRate: number;
-  /** If false, getStatus() always returns NOT_FOUND (simulates no status endpoint). Default true. */
+  /** If false, getStatus() always returns NOT_FOUND. Default true. */
   statusQueryEnabled: boolean;
   /**
-   * 0–1 probability that a transient rejection actually settled at the bank
+   * 0-1 probability that a transient rejection actually settled at the bank
    * and will produce an ASYNC_CONFIRM later (lying transient). Default 0.
-   * When this fires, getStatus() returns CONFIRMED and the key appears in getSettledKeys().
    */
   lyingTransientRate: number;
+  /**
+   * If false, the bank does not deduplicate on idempotency key - every send
+   * rolls fresh regardless of prior outcomes. Default true.
+   * Set to false for break-it tests that need to exercise double-settlement.
+   */
+  dedupe: boolean;
 }
 
 export const DEFAULT_FAKE_BANK_CONFIG: FakeBankConfig = {
@@ -62,6 +69,7 @@ export const DEFAULT_FAKE_BANK_CONFIG: FakeBankConfig = {
   statusTimeoutRate: 0.05,
   statusQueryEnabled: true,
   lyingTransientRate: 0,
+  dedupe: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -74,19 +82,26 @@ export interface AsyncBankEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Per-account settlement record (for I1 checker)
+// ---------------------------------------------------------------------------
+
+export interface AccountSettlement {
+  /** Total cents settled to this account across all keys. */
+  totalCents: Cents;
+  /** Number of distinct sends that settled to this account. */
+  sendCount: number;
+}
+
+// ---------------------------------------------------------------------------
 // Internal record per idempotency key
 // ---------------------------------------------------------------------------
 
 type SettledOutcome = "ACCEPTED" | "REJECTED_PERMANENT" | "REJECTED_TRANSIENT" | "LYING_TRANSIENT";
 
 interface KeyRecord {
-  /** The outcome the bank committed to on the first send. */
   outcome: SettledOutcome | "TIMEOUT";
   amountCents: Cents;
-  /**
-   * For TIMEOUT outcomes: did the bank eventually settle this async?
-   * Determined at send time, revealed on getStatus().
-   */
+  bankDetails: string;
   asyncResolution: "CONFIRMED" | "FAILED" | null;
 }
 
@@ -112,57 +127,51 @@ export class FakeBank implements Bank {
   async send(
     key: IdempotencyKey,
     amountCents: Cents,
-    _bankDetails: string,
+    bankDetails: string,
   ): Promise<BankSendResponse> {
-    // Idempotency: only replay committed outcomes (ACCEPTED, REJECTED_PERMANENT).
-    // Transient rejects and unresolved timeouts are not committed - a retry with
-    // the same key gets a fresh roll. This matches real bank behaviour: a transient
-    // reject means the bank did not process the request, so the same key is safe to retry.
-    const existing = this.records.get(key);
-    if (existing) {
-      if (existing.outcome === "ACCEPTED") {
-        return { type: "ACCEPTED" };
+    if (this.config.dedupe) {
+      const existing = this.records.get(key);
+      if (existing) {
+        if (existing.outcome === "ACCEPTED") {
+          return { type: "ACCEPTED" };
+        }
+        if (existing.outcome === "REJECTED_PERMANENT") {
+          return { type: "REJECTED_PERMANENT", reason: "fake-bank: permanent rejection (replay)" };
+        }
+        // REJECTED_TRANSIENT, LYING_TRANSIENT, TIMEOUT: not committed, roll fresh.
+        this.records.delete(key);
       }
-      if (existing.outcome === "REJECTED_PERMANENT") {
-        return { type: "REJECTED_PERMANENT", reason: "fake-bank: permanent rejection (replay)" };
-      }
-      // REJECTED_TRANSIENT, LYING_TRANSIENT, TIMEOUT: not committed, roll fresh below.
-      this.records.delete(key);
     }
 
-    // Fresh send  -  roll outcomes.
+    // Roll outcomes.
     const r = this.rng.next();
     const { permanentRejectRate, transientRejectRate, timeoutRate } = this.config;
 
     if (r < permanentRejectRate) {
-      this.records.set(key, { outcome: "REJECTED_PERMANENT", amountCents, asyncResolution: null });
+      this.records.set(key, { outcome: "REJECTED_PERMANENT", amountCents, bankDetails, asyncResolution: null });
       return { type: "REJECTED_PERMANENT", reason: "fake-bank: permanent rejection" };
     }
 
     if (r < permanentRejectRate + transientRejectRate) {
-      // Check if this transient rejection is actually a lying transient.
       const lyingR = this.rng.next();
       if (lyingR < this.config.lyingTransientRate) {
-        // Bank actually settled but lies to us. Queue ASYNC_CONFIRM for later delivery.
-        this.records.set(key, { outcome: "LYING_TRANSIENT", amountCents, asyncResolution: "CONFIRMED" });
+        this.records.set(key, { outcome: "LYING_TRANSIENT", amountCents, bankDetails, asyncResolution: "CONFIRMED" });
         this.asyncQueue.push({ key, type: "ASYNC_CONFIRM" });
       } else {
-        this.records.set(key, { outcome: "REJECTED_TRANSIENT", amountCents, asyncResolution: null });
+        this.records.set(key, { outcome: "REJECTED_TRANSIENT", amountCents, bankDetails, asyncResolution: null });
       }
       return { type: "REJECTED_TRANSIENT", reason: "fake-bank: transient rejection" };
     }
 
     if (r < permanentRejectRate + transientRejectRate + timeoutRate) {
-      // Decide async resolution now (deterministic, same seed = same harness run).
       const asyncR = this.rng.next();
       const asyncResolution: "CONFIRMED" | "FAILED" =
         asyncR < this.config.asyncConfirmRate ? "CONFIRMED" : "FAILED";
-      this.records.set(key, { outcome: "TIMEOUT", amountCents, asyncResolution });
+      this.records.set(key, { outcome: "TIMEOUT", amountCents, bankDetails, asyncResolution });
       return { type: "TIMEOUT" };
     }
 
-    // Happy path: accepted and settled.
-    this.records.set(key, { outcome: "ACCEPTED", amountCents, asyncResolution: null });
+    this.records.set(key, { outcome: "ACCEPTED", amountCents, bankDetails, asyncResolution: null });
     return { type: "ACCEPTED" };
   }
 
@@ -175,7 +184,6 @@ export class FakeBank implements Bank {
       return { type: "NOT_FOUND" };
     }
 
-    // Status endpoint itself can time out.
     const timeoutR = this.rng.next();
     if (timeoutR < this.config.statusTimeoutRate) {
       return { type: "TIMEOUT" };
@@ -187,36 +195,25 @@ export class FakeBank implements Bank {
     }
 
     switch (record.outcome) {
-      case "ACCEPTED":
-        return { type: "CONFIRMED" };
-      case "REJECTED_PERMANENT":
-        return { type: "FAILED", reason: "fake-bank: permanent rejection" };
-      case "REJECTED_TRANSIENT":
-        // A normal transient reject means the bank never processed it.
-        return { type: "NOT_FOUND" };
-      case "LYING_TRANSIENT":
-        // The bank settled despite lying  -  status reveals the truth.
-        return { type: "CONFIRMED" };
+      case "ACCEPTED":        return { type: "CONFIRMED" };
+      case "REJECTED_PERMANENT": return { type: "FAILED", reason: "fake-bank: permanent rejection" };
+      case "REJECTED_TRANSIENT": return { type: "NOT_FOUND" };
+      case "LYING_TRANSIENT": return { type: "CONFIRMED" };
       case "TIMEOUT":
-        if (record.asyncResolution === "CONFIRMED") {
-          return { type: "CONFIRMED" };
-        }
-        return { type: "FAILED", reason: "fake-bank: async failure after timeout" };
+        return record.asyncResolution === "CONFIRMED"
+          ? { type: "CONFIRMED" }
+          : { type: "FAILED", reason: "fake-bank: async failure after timeout" };
     }
   }
 
   // -------------------------------------------------------------------------
-  // Bank.getSettledKeys  -  for reconciliation
+  // Bank.getSettledKeys - for reconciliation
   // -------------------------------------------------------------------------
 
   getSettledKeys(): ReadonlyMap<IdempotencyKey, Cents> {
     const settled = new Map<IdempotencyKey, Cents>();
     for (const [key, record] of this.records) {
-      if (
-        record.outcome === "ACCEPTED" ||
-        record.outcome === "LYING_TRANSIENT" ||
-        (record.outcome === "TIMEOUT" && record.asyncResolution === "CONFIRMED")
-      ) {
+      if (this.isSettled(record)) {
         settled.set(key, record.amountCents);
       }
     }
@@ -224,13 +221,33 @@ export class FakeBank implements Bank {
   }
 
   // -------------------------------------------------------------------------
-  // Async event delivery  -  runner calls this after processing all payments
+  // Per-account settlement view - for checker I1
   // -------------------------------------------------------------------------
 
   /**
-   * Drain and return all pending async events (ASYNC_CONFIRM / ASYNC_FAILURE).
-   * Called by the runner after each payment completes to deliver late bank signals.
+   * Returns total settled cents and send count per bankDetails account string.
+   * The checker uses this to verify no account received more than its allocation.
    */
+  getSettlementsByAccount(): ReadonlyMap<string, AccountSettlement> {
+    const byAccount = new Map<string, AccountSettlement>();
+    for (const record of this.records.values()) {
+      if (this.isSettled(record)) {
+        const existing = byAccount.get(record.bankDetails);
+        if (existing) {
+          existing.totalCents += record.amountCents;
+          existing.sendCount++;
+        } else {
+          byAccount.set(record.bankDetails, { totalCents: record.amountCents, sendCount: 1 });
+        }
+      }
+    }
+    return byAccount;
+  }
+
+  // -------------------------------------------------------------------------
+  // Async event delivery
+  // -------------------------------------------------------------------------
+
   drainAsyncEvents(): AsyncBankEvent[] {
     return this.asyncQueue.splice(0);
   }
@@ -239,4 +256,11 @@ export class FakeBank implements Bank {
   // Private helpers
   // -------------------------------------------------------------------------
 
+  private isSettled(record: KeyRecord): boolean {
+    return (
+      record.outcome === "ACCEPTED" ||
+      record.outcome === "LYING_TRANSIENT" ||
+      (record.outcome === "TIMEOUT" && record.asyncResolution === "CONFIRMED")
+    );
+  }
 }

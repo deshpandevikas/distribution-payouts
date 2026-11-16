@@ -98,11 +98,10 @@ export function check(inputs: CheckInputs): CheckResult {
 
   // -------------------------------------------------------------------------
   // I1: no key settled more than once; no investor paid more than allocated.
+  // Check from BANK records, not just our store (R2: double settlement invisible via Map).
   // -------------------------------------------------------------------------
   {
-    // Bank deduplication is internal to FakeBank, but we verify from outside:
-    // each settled key should appear exactly once in bankSettled (it's a Map).
-    // Check our side: no two CONFIRMED payments share the same idempotency key.
+    // Our side: no two CONFIRMED payments share the same idempotency key.
     const confirmedKeys = new Map<string, string>(); // key -> paymentId
     for (const p of payments) {
       if (p.state === "CONFIRMED") {
@@ -118,22 +117,42 @@ export function check(inputs: CheckInputs): CheckResult {
       }
     }
 
-    // No investor should have total CONFIRMED amount > their allocation.
-    const confirmedByInvestor = new Map<string, number>();
-    const allocatedByInvestor = new Map<string, number>();
+    // Bank side: total settled per account must not exceed the allocation for that account.
+    // Build allocated amount per bankDetails from our payment records.
+    const allocatedByAccount = new Map<string, number>();
     for (const p of payments) {
-      allocatedByInvestor.set(p.investorId, p.amountCents);
-      if (p.state === "CONFIRMED") {
-        confirmedByInvestor.set(p.investorId, (confirmedByInvestor.get(p.investorId) ?? 0) + p.amountCents);
-      }
+      allocatedByAccount.set(p.bankDetails, (allocatedByAccount.get(p.bankDetails) ?? 0) + p.amountCents);
     }
-    for (const [investorId, confirmed] of confirmedByInvestor) {
-      const allocated = allocatedByInvestor.get(investorId) ?? 0;
-      if (confirmed > allocated) {
-        violations.push({
-          invariant: "I1",
-          detail: `investor ${investorId} confirmed ${confirmed}¢ > allocated ${allocated}¢`,
-        });
+
+    if (bank.getSettlementsByAccount) {
+      const byAccount = bank.getSettlementsByAccount();
+      for (const [account, settlement] of byAccount) {
+        const allocated = allocatedByAccount.get(account) ?? 0;
+        if (settlement.totalCents > allocated) {
+          violations.push({
+            invariant: "I1",
+            detail: `account ${account} received ${settlement.totalCents}¢ from bank (${settlement.sendCount} sends) > allocated ${allocated}¢`,
+          });
+        }
+      }
+    } else {
+      // Fallback: check our store side only (weaker - blind to double settlement).
+      const confirmedByInvestor = new Map<string, number>();
+      const allocatedByInvestor = new Map<string, number>();
+      for (const p of payments) {
+        allocatedByInvestor.set(p.investorId, p.amountCents);
+        if (p.state === "CONFIRMED") {
+          confirmedByInvestor.set(p.investorId, (confirmedByInvestor.get(p.investorId) ?? 0) + p.amountCents);
+        }
+      }
+      for (const [investorId, confirmed] of confirmedByInvestor) {
+        const allocated = allocatedByInvestor.get(investorId) ?? 0;
+        if (confirmed > allocated) {
+          violations.push({
+            invariant: "I1",
+            detail: `investor ${investorId} confirmed ${confirmed}¢ > allocated ${allocated}¢ (store-side check only)`,
+          });
+        }
       }
     }
   }
