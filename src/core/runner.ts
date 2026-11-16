@@ -111,18 +111,12 @@ export class Runner {
       let payment = this.store.getPaymentByKey(key);
 
       if (!payment) {
-        // Zero-cent allocations: log and skip per agreed-decisions.md #13.
+        // Zero-cent allocations: log outside audit and skip per agreed-decisions.md #13.
         if (allocation.amountCents === 0) {
-          this.appendAudit({
-            paymentId: `zero:${distribution.id}:${allocation.investor.id}`,
-            distributionId: distribution.id,
-            investorId: allocation.investor.id,
-            event: "SEND_INTENT_RECORDED",
-            fromState: "CREATED",
-            toState: "CREATED",
-            reason: "zero-cent allocation  -  no payment created",
-            timestamp: this.clock.now(),
-          });
+          console.log(
+            `[SKIP] zero-cent allocation for investor ${allocation.investor.id}` +
+            ` in distribution ${distribution.id} - no payment created`,
+          );
           continue;
         }
 
@@ -273,11 +267,11 @@ export class Runner {
       case "REJECTED_TRANSIENT": {
         const nextRetries = payment.transientRetries + 1;
         if (nextRetries >= this.config.maxTransientRetries) {
-          // Retries exhausted  -  move to FAILED.
+          // Retries exhausted - use TRANSIENT_RETRIES_EXHAUSTED for accurate audit.
           payment = { ...payment, transientRetries: nextRetries };
           this.store.savePayment(payment);
           return this.applyAndSave(payment, {
-            type: "BANK_REJECTED_PERMANENT",
+            type: "TRANSIENT_RETRIES_EXHAUSTED",
             reason: `transient retries exhausted after ${nextRetries} attempts`,
           });
         }
@@ -358,9 +352,8 @@ export class Runner {
 
         // UNKNOWN state.
         if (insideWindow) {
-          // Stay UNKNOWN  -  but we need to stay in the while loop.
-          // Apply the event which keeps state as UNKNOWN.
-          return this.applyAndSave(payment, { type: "BANK_TIMEOUT" });
+          // Stay UNKNOWN - inside settle window, wait for bank to settle.
+          return this.applyAndSave(payment, { type: "STATUS_NOT_FOUND_IN_WINDOW" });
         }
         // Outside window: move back to SENDING for resend.
         return this.applyAndSave(payment, { type: "STATUS_NOT_FOUND" });
