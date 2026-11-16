@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Run tests on src save",
+      "trigger": "PostFileSave",
+      "description": "Runs the full Vitest suite whenever a .ts file under src/ is saved.",
+      "matcher": "src/.*\\.ts$",
+      "action": {
+        "type": "command",
+        "command": "npx vitest run"
+      }
+    }
+  ]
+}

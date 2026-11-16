@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Append quiz questions on core save",
+      "trigger": "PostFileSave",
+      "description": "After any save to src/core/, appends 2 hard reviewer-style why questions to QUIZ.md without answering them.",
+      "matcher": "src/core/.*\\.ts$",
+      "action": {
+        "type": "agent",
+        "prompt": "Append 2 hard \"why\" questions about this change to QUIZ.md. Do not answer them."
+      }
+    }
+  ]
+}
