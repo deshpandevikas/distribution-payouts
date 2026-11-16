@@ -46,34 +46,34 @@ export interface CheckResult {
 }
 
 // ---------------------------------------------------------------------------
-// Legal transitions (mirrors the transition table  -  used for I5)
+// Legal transitions - independent copy from docs/transitions.md.
+// Does NOT import from src/core/stateMachine.ts so a runner table bug cannot
+// blind this check (R7). Maintained in sync with the docs manually.
 // ---------------------------------------------------------------------------
 
 type TransitionKey = `${PaymentState}->${PaymentState}`;
 
 const LEGAL_TRANSITIONS: ReadonlySet<TransitionKey> = new Set<TransitionKey>([
-  // CREATED
+  // CREATED -> SENDING (SEND_INTENT_RECORDED)
   "CREATED->SENDING",
+  // CREATED -> MANUAL_REVIEW (ASYNC_CONFIRM/ASYNC_FAILURE on unknown payment)
   "CREATED->MANUAL_REVIEW",
-  // SENDING
-  "SENDING->CONFIRMED",
-  "SENDING->FAILED",
-  "SENDING->SENDING",   // transient retry stay
-  "SENDING->UNKNOWN",
-  "SENDING->MANUAL_REVIEW",
-  // UNKNOWN
-  "UNKNOWN->CONFIRMED",
-  "UNKNOWN->FAILED",
-  "UNKNOWN->UNKNOWN",   // stay in window / check timed out
-  "UNKNOWN->SENDING",   // resend after settle window
-  "UNKNOWN->MANUAL_REVIEW",
-  // Terminal -> terminal (noop transitions)
+  // SENDING outcomes
+  "SENDING->CONFIRMED",       // BANK_ACCEPTED
+  "SENDING->FAILED",          // BANK_REJECTED_PERMANENT, retries exhausted
+  "SENDING->SENDING",         // BANK_REJECTED_TRANSIENT (stay, retry same key)
+  "SENDING->UNKNOWN",         // BANK_TIMEOUT
+  "SENDING->MANUAL_REVIEW",   // ASYNC_CONFIRM/ASYNC_FAILURE MR!
+  // UNKNOWN outcomes
+  "UNKNOWN->CONFIRMED",       // STATUS_CONFIRMED, ASYNC_CONFIRM
+  "UNKNOWN->FAILED",          // STATUS_FAILED, ASYNC_FAILURE
+  "UNKNOWN->UNKNOWN",         // BANK_TIMEOUT (status timed out, stay), STATUS_NOT_FOUND in window
+  "UNKNOWN->SENDING",         // STATUS_NOT_FOUND outside window (resend)
+  "UNKNOWN->MANUAL_REVIEW",   // CHECKS_EXHAUSTED
+  // Terminal noop transitions (RECOVERY_ON_RESTART, duplicate events)
   "CONFIRMED->CONFIRMED",
   "FAILED->FAILED",
   "MANUAL_REVIEW->MANUAL_REVIEW",
-  // Recovery transitions
-  "CONFIRMED->CONFIRMED",
-  "FAILED->FAILED",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -198,53 +198,67 @@ export function check(inputs: CheckInputs): CheckResult {
   // -------------------------------------------------------------------------
   // I4: our CONFIRMED set === bank's settled set, except MANUAL_REVIEW payments
   //     which must appear in the reconciliation report.
+  // Computed directly from store and bank - does NOT trust reconcile() output,
+  // so a bug in reconcile cannot blind this check (R7).
   // -------------------------------------------------------------------------
   {
-    // Any STATE_MISMATCH or BANK_ONLY in the report that is NOT a MANUAL_REVIEW
-    // payment is a true discrepancy.
-    for (const m of report.mismatches) {
-      if (m.type === "STATE_MISMATCH") {
-        // MANUAL_REVIEW payments appearing here is expected - they should be in report.
-        if (m.ourState !== "MANUAL_REVIEW") {
+    // Build maps from our store.
+    const ourConfirmedByKey = new Map<string, string>(); // key -> paymentId
+    const ourStateByKey = new Map<string, string>();     // key -> state
+    for (const p of payments) {
+      ourStateByKey.set(p.idempotencyKey, p.state);
+      if (p.state === "CONFIRMED") ourConfirmedByKey.set(p.idempotencyKey, p.id);
+    }
+
+    // Check every key the bank settled.
+    for (const [key, bankAmount] of bankSettled) {
+      const ourState = ourStateByKey.get(key);
+      if (ourState === undefined) {
+        violations.push({
+          invariant: "I4",
+          detail: `bank settled key ${key} (${bankAmount}¢) but we have no payment record`,
+        });
+      } else if (ourState === "CONFIRMED") {
+        // Both sides agree - check amount.
+        const p = payments.find(x => x.idempotencyKey === key);
+        if (p && p.amountCents !== bankAmount) {
           violations.push({
             invariant: "I4",
-            ...(m.paymentId != null ? { paymentId: m.paymentId } : {}),
-            detail: `STATE_MISMATCH for key ${m.key}: our state is ${m.ourState}, bank settled - not in MANUAL_REVIEW`,
+            paymentId: p.id,
+            detail: `amount mismatch for key ${key}: ours ${p.amountCents}¢ vs bank ${bankAmount}¢`,
           });
         }
-        // If it IS MANUAL_REVIEW, it's expected in the report - no violation.
-      } else if (m.type === "BANK_ONLY") {
+      } else if (ourState === "MANUAL_REVIEW") {
+        // Expected - MANUAL_REVIEW payments may have bank settlements.
+        // Verify they appear in the reconciliation report.
+        const inReport = report.mismatches.some(m => m.key === key);
+        if (!inReport) {
+          const p = payments.find(x => x.idempotencyKey === key);
+          violations.push({
+            invariant: "I4",
+            ...(p ? { paymentId: p.id } : {}),
+            detail: `MANUAL_REVIEW payment key ${key} settled by bank but missing from reconciliation report`,
+          });
+        }
+      } else {
+        // Bank settled a key we show as FAILED, SENDING, UNKNOWN, or CREATED.
+        const p = payments.find(x => x.idempotencyKey === key);
         violations.push({
           invariant: "I4",
-          detail: `BANK_ONLY: bank settled key ${m.key} (${m.bankAmountCents}¢) but we have no payment record`,
-        });
-      } else if (m.type === "OURS_ONLY") {
-        violations.push({
-          invariant: "I4",
-          ...(m.paymentId != null ? { paymentId: m.paymentId } : {}),
-          detail: `OURS_ONLY: we show CONFIRMED for key ${m.key} but bank has no settled record`,
-        });
-      } else if (m.type === "AMOUNT_MISMATCH") {
-        violations.push({
-          invariant: "I4",
-          ...(m.paymentId != null ? { paymentId: m.paymentId } : {}),
-          detail: `AMOUNT_MISMATCH for key ${m.key}: ours ${m.ourAmountCents}¢ vs bank ${m.bankAmountCents}¢`,
+          ...(p ? { paymentId: p.id } : {}),
+          detail: `bank settled key ${key} but our payment state is ${ourState} - contradiction`,
         });
       }
     }
 
-    // Also verify: every MANUAL_REVIEW payment whose key the bank settled
-    // appears in the reconciliation report.
-    const reportedKeys = new Set(report.mismatches.map((m) => m.key));
-    for (const p of payments) {
-      if (p.state === "MANUAL_REVIEW" && bankSettled.has(p.idempotencyKey)) {
-        if (!reportedKeys.has(p.idempotencyKey)) {
-          violations.push({
-            invariant: "I4",
-            paymentId: p.id,
-            detail: `MANUAL_REVIEW payment ${p.id} key ${p.idempotencyKey} settled by bank but not in reconciliation report`,
-          });
-        }
+    // Check every key we show as CONFIRMED - must appear in bank settled.
+    for (const [key, paymentId] of ourConfirmedByKey) {
+      if (!bankSettled.has(key)) {
+        violations.push({
+          invariant: "I4",
+          paymentId,
+          detail: `we show CONFIRMED for key ${key} but bank has no settled record`,
+        });
       }
     }
   }
@@ -294,6 +308,19 @@ export function check(inputs: CheckInputs): CheckResult {
             invariant: "I5",
             paymentId: p.id,
             detail: `illegal audited transition: ${entry.fromState} -> ${entry.toState} (event: ${entry.event})`,
+          });
+        }
+      }
+
+      // Continuity: each entry's toState must equal the next entry's fromState.
+      for (let i = 0; i < entries.length - 1; i++) {
+        const curr = entries[i]!;
+        const next = entries[i + 1]!;
+        if (curr.toState !== next.fromState) {
+          violations.push({
+            invariant: "I5",
+            paymentId: p.id,
+            detail: `audit discontinuity at entry ${i}: toState ${curr.toState} !== next fromState ${next.fromState} (events: ${curr.event} -> ${next.event})`,
           });
         }
       }
