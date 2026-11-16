@@ -10,6 +10,7 @@ function makePayment(overrides: Partial<Payment> & { id: string; idempotencyKey:
     distributionId: "dist-1",
     investorId: overrides.id,
     amountCents: 1000,
+    bankDetails: `routing:${overrides.id}`,
     instructionNo: 1,
     state: "CONFIRMED",
     transientRetries: 0,

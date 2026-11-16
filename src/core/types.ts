@@ -69,6 +69,8 @@ export interface Payment {
   /** Allocated amount in cents. */
   amountCents: Cents;
   idempotencyKey: IdempotencyKey;
+  /** Snapshotted bank routing details at time of payment creation. */
+  bankDetails: string;
   /** Increments on reissue (Phase 1.5). Always 1 in Phase 1. */
   instructionNo: number;
   state: PaymentState;
@@ -235,8 +237,12 @@ export interface Bank {
   /** Returns all keys the bank has settled (for reconciliation). */
   getSettledKeys(): ReadonlyMap<IdempotencyKey, Cents>;
   /**
+   * Optional: returns total settled cents and send count per bankDetails account string.
+   * Used by checker I1 to verify no account received more than its allocation.
+   */
+  getSettlementsByAccount?(): ReadonlyMap<string, { totalCents: number; sendCount: number }>;
+  /**
    * Optional: drain and return pending async events (ASYNC_CONFIRM / ASYNC_FAILURE).
-   * Called by the runner after all payments drain to deliver late bank signals.
    * Banks that don't support async events omit this method.
    */
   drainAsyncEvents?(): Array<{ key: IdempotencyKey; type: "ASYNC_CONFIRM" | "ASYNC_FAILURE" }>;

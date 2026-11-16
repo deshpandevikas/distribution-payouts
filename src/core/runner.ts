@@ -132,6 +132,7 @@ export class Runner {
           investorId: allocation.investor.id,
           amountCents: allocation.amountCents,
           idempotencyKey: key,
+          bankDetails: allocation.investor.bankDetails,
           instructionNo: 1,
           state: "CREATED",
           transientRetries: 0,
@@ -231,8 +232,7 @@ export class Runner {
       ? buildIdempotencyKey(payment.distributionId, payment.investorId, payment.instructionNo, payment.transientRetries)
       : payment.idempotencyKey;
 
-    const investor = { id: payment.investorId, name: "", bankDetails: "" };
-    const response = await this.bank.send(key, payment.amountCents, investor.bankDetails);
+    const response = await this.bank.send(key, payment.amountCents, payment.bankDetails);
 
     if (this.crashAt === "afterBankCallBeforeRecord") {
       throw new CrashInjected("afterBankCallBeforeRecord");
