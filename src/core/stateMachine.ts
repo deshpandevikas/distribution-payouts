@@ -137,8 +137,7 @@ const TABLE: Record<TableKey, CellOutcome> = {
   // BANK_REJECTED_TRANSIENT
   // Runner checks retry count BEFORE calling applyEvent:
   //   - if retries < max  -> sends BANK_REJECTED_TRANSIENT  -> stays SENDING (runner retries)
-  //   - if retries >= max -> sends BANK_REJECTED_TRANSIENT  -> moves to FAILED
-  // The state machine sees only the event; the runner passes the right one.
+  //   - if retries >= max -> sends TRANSIENT_RETRIES_EXHAUSTED -> moves to FAILED
   // -------------------------------------------------------------------------
   "CREATED:BANK_REJECTED_TRANSIENT":        ILLEGAL("BANK_REJECTED_TRANSIENT in CREATED"),
   "SENDING:BANK_REJECTED_TRANSIENT":        MOVE("SENDING", "transient rejection  -  stay SENDING, runner will retry"),
@@ -146,6 +145,27 @@ const TABLE: Record<TableKey, CellOutcome> = {
   "CONFIRMED:BANK_REJECTED_TRANSIENT":      ILLEGAL("BANK_REJECTED_TRANSIENT in CONFIRMED"),
   "FAILED:BANK_REJECTED_TRANSIENT":         ILLEGAL("BANK_REJECTED_TRANSIENT in FAILED"),
   "MANUAL_REVIEW:BANK_REJECTED_TRANSIENT":  ILLEGAL("BANK_REJECTED_TRANSIENT in MANUAL_REVIEW"),
+
+  // -------------------------------------------------------------------------
+  // TRANSIENT_RETRIES_EXHAUSTED (runner emits this when max retries reached)
+  // -------------------------------------------------------------------------
+  "CREATED:TRANSIENT_RETRIES_EXHAUSTED":        ILLEGAL("TRANSIENT_RETRIES_EXHAUSTED in CREATED"),
+  "SENDING:TRANSIENT_RETRIES_EXHAUSTED":        MOVE("FAILED"),
+  "UNKNOWN:TRANSIENT_RETRIES_EXHAUSTED":        ILLEGAL("TRANSIENT_RETRIES_EXHAUSTED in UNKNOWN"),
+  "CONFIRMED:TRANSIENT_RETRIES_EXHAUSTED":      ILLEGAL("TRANSIENT_RETRIES_EXHAUSTED in CONFIRMED"),
+  "FAILED:TRANSIENT_RETRIES_EXHAUSTED":         ILLEGAL("TRANSIENT_RETRIES_EXHAUSTED in FAILED"),
+  "MANUAL_REVIEW:TRANSIENT_RETRIES_EXHAUSTED":  ILLEGAL("TRANSIENT_RETRIES_EXHAUSTED in MANUAL_REVIEW"),
+
+  // -------------------------------------------------------------------------
+  // STATUS_NOT_FOUND_IN_WINDOW (runner emits this when NOT_FOUND inside settle window)
+  // Maps UNKNOWN->UNKNOWN (stay, wait for bank to settle)
+  // -------------------------------------------------------------------------
+  "CREATED:STATUS_NOT_FOUND_IN_WINDOW":        ILLEGAL("STATUS_NOT_FOUND_IN_WINDOW in CREATED"),
+  "SENDING:STATUS_NOT_FOUND_IN_WINDOW":        ILLEGAL("STATUS_NOT_FOUND_IN_WINDOW in SENDING"),
+  "UNKNOWN:STATUS_NOT_FOUND_IN_WINDOW":        MOVE("UNKNOWN", "NOT_FOUND inside settle window  -  wait"),
+  "CONFIRMED:STATUS_NOT_FOUND_IN_WINDOW":      ILLEGAL("STATUS_NOT_FOUND_IN_WINDOW in CONFIRMED"),
+  "FAILED:STATUS_NOT_FOUND_IN_WINDOW":         ILLEGAL("STATUS_NOT_FOUND_IN_WINDOW in FAILED"),
+  "MANUAL_REVIEW:STATUS_NOT_FOUND_IN_WINDOW":  ILLEGAL("STATUS_NOT_FOUND_IN_WINDOW in MANUAL_REVIEW"),
 
   // -------------------------------------------------------------------------
   // BANK_TIMEOUT

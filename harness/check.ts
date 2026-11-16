@@ -60,14 +60,14 @@ const LEGAL_TRANSITIONS: ReadonlySet<TransitionKey> = new Set<TransitionKey>([
   "CREATED->MANUAL_REVIEW",
   // SENDING outcomes
   "SENDING->CONFIRMED",       // BANK_ACCEPTED
-  "SENDING->FAILED",          // BANK_REJECTED_PERMANENT, retries exhausted
+  "SENDING->FAILED",          // BANK_REJECTED_PERMANENT, TRANSIENT_RETRIES_EXHAUSTED
   "SENDING->SENDING",         // BANK_REJECTED_TRANSIENT (stay, retry same key)
   "SENDING->UNKNOWN",         // BANK_TIMEOUT
   "SENDING->MANUAL_REVIEW",   // ASYNC_CONFIRM/ASYNC_FAILURE MR!
   // UNKNOWN outcomes
   "UNKNOWN->CONFIRMED",       // STATUS_CONFIRMED, ASYNC_CONFIRM
   "UNKNOWN->FAILED",          // STATUS_FAILED, ASYNC_FAILURE
-  "UNKNOWN->UNKNOWN",         // BANK_TIMEOUT (status timed out, stay), STATUS_NOT_FOUND in window
+  "UNKNOWN->UNKNOWN",         // BANK_TIMEOUT (status timed out), STATUS_NOT_FOUND_IN_WINDOW
   "UNKNOWN->SENDING",         // STATUS_NOT_FOUND outside window (resend)
   "UNKNOWN->MANUAL_REVIEW",   // CHECKS_EXHAUSTED
   // Terminal noop transitions (RECOVERY_ON_RESTART, duplicate events)
