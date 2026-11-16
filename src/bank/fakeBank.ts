@@ -54,6 +54,11 @@ export interface FakeBankConfig {
    */
   lyingTransientRate: number;
   /**
+   * 0-1 probability that an ACCEPTED send also queues a duplicate ASYNC_CONFIRM
+   * (simulates late duplicate confirmation from bank). Default 0.
+   */
+  duplicateConfirmRate: number;
+  /**
    * If false, the bank does not deduplicate on idempotency key - every send
    * rolls fresh regardless of prior outcomes. Default true.
    * Set to false for break-it tests that need to exercise double-settlement.
@@ -69,6 +74,7 @@ export const DEFAULT_FAKE_BANK_CONFIG: FakeBankConfig = {
   statusTimeoutRate: 0.05,
   statusQueryEnabled: true,
   lyingTransientRate: 0,
+  duplicateConfirmRate: 0,
   dedupe: true,
 };
 
@@ -139,6 +145,9 @@ export class FakeBank implements Bank {
           return { type: "REJECTED_PERMANENT", reason: "fake-bank: permanent rejection (replay)" };
         }
         // REJECTED_TRANSIENT, LYING_TRANSIENT, TIMEOUT: not committed, roll fresh.
+        // Cancel any pending async events for this key since it's being retried.
+        const idx = this.asyncQueue.findIndex(e => e.key === key);
+        if (idx !== -1) this.asyncQueue.splice(idx, 1);
         this.records.delete(key);
       }
     }
@@ -168,10 +177,16 @@ export class FakeBank implements Bank {
       const asyncResolution: "CONFIRMED" | "FAILED" =
         asyncR < this.config.asyncConfirmRate ? "CONFIRMED" : "FAILED";
       this.records.set(key, { outcome: "TIMEOUT", amountCents, bankDetails, asyncResolution });
+      // Queue ASYNC_CONFIRM/ASYNC_FAILURE so the runner receives late notification.
+      this.asyncQueue.push({ key, type: asyncResolution === "CONFIRMED" ? "ASYNC_CONFIRM" : "ASYNC_FAILURE" });
       return { type: "TIMEOUT" };
     }
 
     this.records.set(key, { outcome: "ACCEPTED", amountCents, bankDetails, asyncResolution: null });
+    // Optionally queue a duplicate confirm (simulates late duplicate from bank).
+    if (this.rng.next() < this.config.duplicateConfirmRate) {
+      this.asyncQueue.push({ key, type: "ASYNC_CONFIRM" });
+    }
     return { type: "ACCEPTED" };
   }
 

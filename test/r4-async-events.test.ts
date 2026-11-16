@@ -139,9 +139,15 @@ describe("R4d: unknown-key async event alerts instead of silent drop", () => {
     await runner.run(dist);
 
     // Before fix: ghost event silently dropped
-    // After fix: ghost event logged as an alert/MR in the audit
-    const audit = store.listAudit("dist-r4d");
-    const ghostAlert = audit.find(e =>
+    // After fix: ghost event logged as an alert in the audit (under "unknown" distributionId)
+    // Search across all audit entries since the ghost key has no real distribution.
+    const allPayments = store.listPayments("dist-r4d");
+    // The alert is written to the store audit - check via a direct scan
+    // by looking at audit for any distribution including the synthetic one.
+    const auditDist = store.listAudit("dist-r4d");
+    const auditUnknown = store.listAudit("unknown");
+    const allAudit = [...auditDist, ...auditUnknown];
+    const ghostAlert = allAudit.find(e =>
       e.reason?.includes("ghost-key") || e.reason?.includes("unknown key"),
     );
     expect(ghostAlert).toBeDefined();
