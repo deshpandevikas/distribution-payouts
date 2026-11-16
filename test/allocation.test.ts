@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { describe, it, expect } from "vitest";
 import { allocate, AllocationError } from "../src/core/allocation.js";
 import type { AllocationInput } from "../src/core/types.js";
 
