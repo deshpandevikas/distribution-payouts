@@ -154,15 +154,17 @@ export class Runner {
       }
     }
 
-    // Process all non-terminal payments.
+    // Process all non-terminal payments, draining async events after each one.
     for (const id of paymentIds) {
       const payment = this.store.getPayment(id)!;
       if (!TERMINAL_STATES.has(payment.state)) {
         await this.processPayment(payment);
       }
+      // Drain async events mid-run after each payment completes.
+      await this.deliverAsyncEvents(paymentIds);
     }
 
-    // Deliver any async bank events (e.g. ASYNC_CONFIRM from lying-transient sends).
+    // Final drain for any events that arrived after the last payment.
     await this.deliverAsyncEvents(paymentIds);
 
     return this.buildResult(distribution.id, distribution.allocations.reduce(
@@ -377,7 +379,21 @@ export class Runner {
 
     for (const ev of events) {
       const id = keyToId.get(ev.key);
-      if (!id) continue;
+      if (!id) {
+        // Bank reports a payment we never sent - log an alert audit entry.
+        this.store.appendAudit({
+          paymentId: `unknown:${ev.key}`,
+          distributionId: "unknown",
+          investorId: "unknown",
+          event: ev.type,
+          fromState: "CREATED",
+          toState: "MANUAL_REVIEW",
+          reason: `unknown key ${ev.key} - bank event for payment not in this distribution`,
+          timestamp: this.clock.now(),
+        });
+        console.error(`[ALERT] async event ${ev.type} for unknown key ${ev.key}`);
+        continue;
+      }
       const payment = this.store.getPayment(id);
       if (!payment) continue;
 
