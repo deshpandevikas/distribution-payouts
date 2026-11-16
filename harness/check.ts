@@ -185,15 +185,15 @@ export function check(inputs: CheckInputs): CheckResult {
     // payment is a true discrepancy.
     for (const m of report.mismatches) {
       if (m.type === "STATE_MISMATCH") {
-        // MANUAL_REVIEW payments appearing here is expected  -  they should be in report.
+        // MANUAL_REVIEW payments appearing here is expected - they should be in report.
         if (m.ourState !== "MANUAL_REVIEW") {
           violations.push({
             invariant: "I4",
-            paymentId: m.paymentId ?? undefined,
-            detail: `STATE_MISMATCH for key ${m.key}: our state is ${m.ourState}, bank settled  -  not in MANUAL_REVIEW`,
+            ...(m.paymentId != null ? { paymentId: m.paymentId } : {}),
+            detail: `STATE_MISMATCH for key ${m.key}: our state is ${m.ourState}, bank settled - not in MANUAL_REVIEW`,
           });
         }
-        // If it IS MANUAL_REVIEW, it's expected in the report  -  no violation.
+        // If it IS MANUAL_REVIEW, it's expected in the report - no violation.
       } else if (m.type === "BANK_ONLY") {
         violations.push({
           invariant: "I4",
@@ -202,13 +202,13 @@ export function check(inputs: CheckInputs): CheckResult {
       } else if (m.type === "OURS_ONLY") {
         violations.push({
           invariant: "I4",
-          paymentId: m.paymentId ?? undefined,
+          ...(m.paymentId != null ? { paymentId: m.paymentId } : {}),
           detail: `OURS_ONLY: we show CONFIRMED for key ${m.key} but bank has no settled record`,
         });
       } else if (m.type === "AMOUNT_MISMATCH") {
         violations.push({
           invariant: "I4",
-          paymentId: m.paymentId ?? undefined,
+          ...(m.paymentId != null ? { paymentId: m.paymentId } : {}),
           detail: `AMOUNT_MISMATCH for key ${m.key}: ours ${m.ourAmountCents}¢ vs bank ${m.bankAmountCents}¢`,
         });
       }

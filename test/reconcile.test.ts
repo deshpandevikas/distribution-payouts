@@ -47,8 +47,8 @@ describe("reconcile", () => {
 
     const report = reconcile("dist-1", store, bank, 0);
     expect(report.mismatches).toHaveLength(1);
-    expect(report.mismatches[0].type).toBe("OURS_ONLY");
-    expect(report.mismatches[0].key).toBe("key-orphan");
+    expect(report.mismatches[0]!.type).toBe("OURS_ONLY");
+    expect(report.mismatches[0]!.key).toBe("key-orphan");
   });
 
   it("reports BANK_ONLY when bank settled a key we have no record for", async () => {
@@ -65,8 +65,8 @@ describe("reconcile", () => {
 
     const report = reconcile("dist-1", store, bank, 0);
     expect(report.mismatches).toHaveLength(1);
-    expect(report.mismatches[0].type).toBe("BANK_ONLY");
-    expect(report.mismatches[0].bankAmountCents).toBe(999);
+    expect(report.mismatches[0]!.type).toBe("BANK_ONLY");
+    expect(report.mismatches[0]!.bankAmountCents).toBe(999);
   });
 
   it("reports STATE_MISMATCH when bank settled a key but our payment is not CONFIRMED", async () => {
@@ -88,8 +88,8 @@ describe("reconcile", () => {
 
     const report = reconcile("dist-1", store, bank, 0);
     expect(report.mismatches).toHaveLength(1);
-    expect(report.mismatches[0].type).toBe("STATE_MISMATCH");
-    expect(report.mismatches[0].ourState).toBe("MANUAL_REVIEW");
+    expect(report.mismatches[0]!.type).toBe("STATE_MISMATCH");
+    expect(report.mismatches[0]!.ourState).toBe("MANUAL_REVIEW");
   });
 
   it("never auto-fixes  -  store and bank are unchanged after reconcile", async () => {
@@ -126,9 +126,9 @@ describe("reconcile", () => {
 
     const report = reconcile("dist-1", store, bank, 0);
     expect(report.mismatches).toHaveLength(1);
-    expect(report.mismatches[0].type).toBe("AMOUNT_MISMATCH");
-    expect(report.mismatches[0].ourAmountCents).toBe(500);
-    expect(report.mismatches[0].bankAmountCents).toBe(1000);
+    expect(report.mismatches[0]!.type).toBe("AMOUNT_MISMATCH");
+    expect(report.mismatches[0]!.ourAmountCents).toBe(500);
+    expect(report.mismatches[0]!.bankAmountCents).toBe(1000);
   });
 
   it("only includes payments for the requested distributionId", async () => {
