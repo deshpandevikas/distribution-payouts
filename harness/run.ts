@@ -111,7 +111,7 @@ async function runScenario(seed: number, opts: ReturnType<typeof parseArgs>) {
 
   // Fake clock: starts at 0, advances by 1ms on each call.
   let now = 0;
-  const clock = { now: () => now++ };
+  const clock = { now: () => now++, sleep: async () => { now += 1; } };
 
   const runner = new Runner({
     store,

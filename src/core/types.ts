@@ -80,6 +80,8 @@ export interface Payment {
   statusChecks: number;
   createdAt: number;
   updatedAt: number;
+  /** Timestamp of the most recent bank send attempt. Used for settle-window calculation. */
+  lastSentAt: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +199,8 @@ export interface RunResult {
 /** Injected clock  -  no Date.now() in src/. */
 export interface Clock {
   now(): number;
+  /** Advance time by ms. Fake clock increments; real clock awaits setTimeout. */
+  sleep(ms: number): Promise<void>;
 }
 
 /** Injected RNG  -  no Math.random() in src/. */

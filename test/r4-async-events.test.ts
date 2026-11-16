@@ -88,7 +88,7 @@ describe("R4c: async events drained mid-run at seeded random points", () => {
     let now = 0;
     const runner = new Runner({
       store, bank,
-      clock: { now: () => now++ },
+      clock: { now: () => now++, sleep: async () => { now += 1; } },
       rng: { next: () => 0 },
       config: { settleWindowMs: 0, backoffBaseMs: 0 },
     });
@@ -130,7 +130,7 @@ describe("R4d: unknown-key async event alerts instead of silent drop", () => {
     let now = 0;
     const runner = new Runner({
       store, bank,
-      clock: { now: () => now++ },
+      clock: { now: () => now++, sleep: async () => { now += 1; } },
       rng: { next: () => 0.5 },
       config: { settleWindowMs: 0 },
     });

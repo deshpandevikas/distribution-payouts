@@ -31,7 +31,7 @@ async function runScenarioAndCheck(seed: number, crashAt?: CrashPoint) {
   const store = new MemoryStore();
   const bank = new FakeBank(rngFromSeed(seed + 1), scenario.bankConfig);
   let now = 0;
-  const clock = { now: () => now++ };
+  const clock = { now: () => now++, sleep: async () => { now += 1; } };
 
   const runner = new Runner({
     store,
@@ -182,7 +182,7 @@ describe("I1, I3, I5 hold with bank status query OFF", () => {
         const store = new MemoryStore();
         const bank = new FakeBank(rngFromSeed(seed + 1), scenario.bankConfig);
         let now = 0;
-        const clock = { now: () => now++ };
+        const clock = { now: () => now++, sleep: async () => { now += 1; } };
 
         const runner = new Runner({
           store,

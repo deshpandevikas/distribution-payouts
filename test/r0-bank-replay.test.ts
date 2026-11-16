@@ -44,7 +44,7 @@ describe("R0: same-key retry after transient rejection", () => {
     let now = 0;
     const runner = new Runner({
       store, bank,
-      clock: { now: () => now++ },
+      clock: { now: () => now++, sleep: async () => { now += 1; } },
       rng: { next: () => 0 }, // zero jitter
       config: { maxTransientRetries: 3, backoffBaseMs: 0, settleWindowMs: 0 },
     });
@@ -73,7 +73,7 @@ describe("R0: same-key retry after transient rejection", () => {
       let now = 0;
       const runner = new Runner({
         store, bank,
-        clock: { now: () => now++ },
+        clock: { now: () => now++, sleep: async () => { now += 1; } },
         rng: { next: () => 0 },
         config: { maxTransientRetries: 3, backoffBaseMs: 0, settleWindowMs: 0 },
       });

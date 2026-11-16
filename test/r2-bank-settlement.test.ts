@@ -37,7 +37,7 @@ describe("R2a: bankDetails passed to bank.send", () => {
     let now = 0;
     const runner = new Runner({
       store, bank,
-      clock: { now: () => now++ },
+      clock: { now: () => now++, sleep: async () => { now += 1; } },
       rng: { next: () => 0.5 },
       config: { settleWindowMs: 0 },
     });
