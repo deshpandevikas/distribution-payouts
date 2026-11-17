@@ -43,6 +43,11 @@ describe("R5a: NOT_FOUND inside settle window audited as correct event", () => {
       lagChecks: 1,         // one NOT_FOUND check inside window
     });
 
+    // R5a is about the status path, not about late async events. Hold the bank's
+    // async events back so C6's mid-flight drain does not resolve the payment
+    // before the first status query.
+    bank.drainAsyncEvents = () => [];
+
     const store = new MemoryStore();
     // Large settle window so we're inside it on the first check
     const runner = makeRunner(store, bank, { settleWindowMs: 100_000, maxStatusChecks: 5 });

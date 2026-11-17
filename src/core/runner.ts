@@ -338,6 +338,23 @@ export class Runner {
       throw new CrashInjected("duringStatusCheck");
     }
 
+    // C6: drain async events before each status query. A late ASYNC_CONFIRM for
+    // this payment can arrive while it sits in UNKNOWN; draining only after a
+    // payment finished meant the event never landed mid-flight, so the
+    // UNKNOWN:ASYNC_CONFIRM path was dead in every scenario.
+    await this.deliverAsyncEvents(
+      payment.distributionId,
+      this.store.listPayments(payment.distributionId).map((p) => p.id),
+    );
+
+    // The drain may have resolved this payment (or moved it): re-read before
+    // acting on it, so we never apply a status result to a stale state.
+    const current = this.store.getPayment(payment.id);
+    if (!current || TERMINAL_STATES.has(current.state)) {
+      return current ?? payment;
+    }
+    payment = current;
+
     const response = await this.bank.getStatus(payment.idempotencyKey);
 
     // Increment check count before applying the event.

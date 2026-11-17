@@ -55,6 +55,12 @@ describe("R3: settle-window wait and resend are exercised", () => {
       lagChecks: 100,        // NOT_FOUND for every status check
     });
 
+    // This test is about the settle-window wait/resend, not about late async
+    // events. Hold the bank's async events back: they have not arrived yet.
+    // Otherwise C6's mid-flight drain resolves the payment before the first
+    // status query and the wait/resend sequence never runs.
+    bank.drainAsyncEvents = () => [];
+
     const sendKeys: IdempotencyKey[] = [];
     const origSend = bank.send.bind(bank);
     bank.send = async (key, amount, details) => {
