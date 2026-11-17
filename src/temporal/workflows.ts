@@ -1,17 +1,20 @@
 /**
  * One workflow per distribution.
  *
- * Determinism rules: no Date.now(), no Math.random(), no I/O, no Node imports.
- * Time comes from workflowInfo().unsafe.now() (the workflow task clock) and
- * waiting is done with Temporal's sleep, so a replay sees the same numbers and
- * the same timers.
+ * Determinism rules: no Math.random(), no I/O, no Node imports. Date.now() is
+ * safe here - the SDK replaces it with the workflow clock, so a replay
+ * reproduces the same numbers. workflowInfo().unsafe.now() is NOT that clock:
+ * it reads system time, and using it here made lastSentAt (written by an
+ * activity from its own clock) and the settle-window check disagree, so the
+ * window was skipped. Waiting is Temporal's sleep, so a replay sees the same
+ * timers too.
  *
  * Every bank call and every store write is an activity. Business outcomes come
  * back as values, so Temporal's retries mean "the worker failed", not "the bank
  * said no".
  */
 
-import { proxyActivities, sleep, workflowInfo } from "@temporalio/workflow";
+import { proxyActivities, sleep } from "@temporalio/workflow";
 import { TERMINAL_STATES } from "../core/types.js";
 import type { Distribution, Payment, PaymentId, RunResult } from "../core/types.js";
 import type { TemporalActivities } from "./activities.js";
@@ -30,9 +33,9 @@ function backoffMs(attempt: number): number {
   return 100 * Math.pow(2, Math.max(0, attempt - 1));
 }
 
-async function statusCheck(id: PaymentId): Promise<Payment> {
+async function statusCheck(id: PaymentId, nowMs: number): Promise<Payment> {
   const status = await acts.getStatus(id);
-  const outcome = await acts.recordStatus(id, status, workflowInfo().unsafe.now());
+  const outcome = await acts.recordStatus(id, status, nowMs);
   if (outcome.waitMs > 0) {
     // Temporal sleep, not a real timer: the test environment skips it.
     await sleep(outcome.waitMs);
@@ -61,20 +64,26 @@ export async function distributionWorkflow(distribution: Distribution): Promise<
         throw new Error(`workflow exceeded 1000 iterations for payment ${payment.id}`);
       }
 
+      // One clock for this attempt. Date.now() inside a workflow is the
+      // deterministic workflow time, and the send activity persists it as
+      // lastSentAt, so the settle window is measured against the clock that
+      // sent the payment rather than an activity's own idea of now.
+      const nowMs = Date.now();
+
       if (payment.state === "CREATED") {
         payment = await acts.recordEvent(payment.id, { type: "SEND_INTENT_RECORDED" });
       } else if (payment.state === "SENDING") {
         if (recovered && firstIteration) {
-          payment = await statusCheck(payment.id);
+          payment = await statusCheck(payment.id, nowMs);
         } else {
-          const sent = await acts.sendOnce(payment.id);
+          const sent = await acts.sendOnce(payment.id, nowMs);
           payment = await acts.recordSendResponse(payment.id, sent.key, sent.response);
           if (sent.response.type === "REJECTED_TRANSIENT") {
             await sleep(backoffMs(payment.transientRetries));
           }
         }
       } else if (payment.state === "UNKNOWN") {
-        payment = await statusCheck(payment.id);
+        payment = await statusCheck(payment.id, nowMs);
       } else {
         throw new Error(`unexpected non-terminal state ${payment.state} for ${payment.id}`);
       }

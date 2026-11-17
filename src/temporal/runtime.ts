@@ -175,7 +175,10 @@ export function createTemporalRuntimeQueue(opts: TemporalRuntimeOptions): Tempor
 
     recordEvent,
 
-    async sendOnce(id: PaymentId): Promise<{ key: IdempotencyKey; response: BankSendResponse }> {
+    async sendOnce(
+      id: PaymentId,
+      nowMs: number,
+    ): Promise<{ key: IdempotencyKey; response: BankSendResponse }> {
       const payment = mustGet(id);
       // Break-it: a new key per retry is exactly the bug F3 has to be able to
       // reproduce, so the flag is honoured here too.
@@ -186,7 +189,9 @@ export function createTemporalRuntimeQueue(opts: TemporalRuntimeOptions): Tempor
         ? buildIdempotencyKey(payment.distributionId, payment.investorId, payment.instructionNo, retryNo)
         : payment.idempotencyKey;
 
-      const sent: Payment = { ...payment, lastSentAt: opts.clock.now() };
+      // The workflow's clock, not this activity's: the settle window is measured
+      // against lastSentAt, so both sides must use the same clock.
+      const sent: Payment = { ...payment, lastSentAt: nowMs };
       opts.store.savePayment(sent);
 
       const response = await opts.bank.send(key, payment.amountCents, payment.bankDetails);
