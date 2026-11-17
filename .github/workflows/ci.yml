@@ -33,9 +33,15 @@ jobs:
 
       - name: Break-it flags each fail an invariant
         run: |
+          # Exit 1 only: 0 means the flag broke nothing, 2 means the harness
+          # crashed (uncaught exception, bad flag). A crash is not a catch.
           for flag in skipIntentRecord timeoutAsFailure newKeyOnRetry overwriteConflictingConfirm resendWithoutStatusCheck; do
-            npm run harness -- --scenarios=50 --break-it=$flag \
-              && echo "ERROR: $flag did not fail any invariant" && exit 1 \
-              || echo "OK: $flag failed an invariant (exit 1 expected)"
+            code=0
+            npm run harness -- --scenarios=50 --break-it=$flag || code=$?
+            if [ "$code" -ne 1 ]; then
+              echo "ERROR: $flag exited $code, expected 1 (0 = broke nothing, 2 = harness crash)"
+              exit 1
+            fi
+            echo "OK: $flag failed an invariant (exit 1)"
           done
-          echo "All 5 break-it flags confirmed failing."
+          echo "All 5 break-it flags confirmed failing with exit 1."

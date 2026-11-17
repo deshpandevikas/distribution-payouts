@@ -52,7 +52,7 @@ export type PaymentEvent =
   | { type: "BANK_TIMEOUT" }
   | { type: "STATUS_CONFIRMED" }
   | { type: "STATUS_FAILED"; reason: string }
-  | { type: "STATUS_NOT_FOUND" }
+  | { type: "STATUS_NOT_FOUND"; reason?: string }
   | { type: "STATUS_NOT_FOUND_IN_WINDOW" }
   | { type: "TRANSIENT_RETRIES_EXHAUSTED"; reason: string }
   | { type: "ASYNC_CONFIRM" }

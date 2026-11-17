@@ -60,7 +60,8 @@ export interface FakeBankConfig {
   duplicateConfirmRate: number;
   /**
    * If false, the bank does not deduplicate on idempotency key - every send
-   * rolls fresh regardless of prior outcomes. Default true.
+   * rolls fresh regardless of prior outcomes, and each settling send counts as
+   * a separate transfer in getSettlementsByAccount(). Default true.
    * Set to false for break-it tests that need to exercise double-settlement.
    */
   dedupe: boolean;
@@ -111,6 +112,13 @@ export interface AccountSettlement {
 
 type SettledOutcome = "ACCEPTED" | "REJECTED_PERMANENT" | "REJECTED_TRANSIENT" | "LYING_TRANSIENT";
 
+/** One transfer the bank actually made. */
+interface Settlement {
+  key: IdempotencyKey;
+  amountCents: Cents;
+  bankDetails: string;
+}
+
 interface KeyRecord {
   outcome: SettledOutcome | "TIMEOUT";
   amountCents: Cents;
@@ -124,6 +132,14 @@ interface KeyRecord {
 
 export class FakeBank implements Bank {
   private readonly records = new Map<IdempotencyKey, KeyRecord>();
+  /**
+   * Every transfer made, one entry per settling send - deliberately not keyed.
+   * records is one-per-key, so resending a settled key overwrites the earlier
+   * transfer and hides it. That is the same "double settlement invisible via a
+   * Map" blind spot R2 closed for distinct keys, still open for one key sent
+   * twice. Only populated when dedupe=false (see recordSettlement).
+   */
+  private readonly settlementLedger: Settlement[] = [];
   private readonly asyncQueue: AsyncBankEvent[] = [];
   private readonly lagCheckCounts = new Map<IdempotencyKey, number>();
   private readonly rng: Rng;
@@ -173,6 +189,7 @@ export class FakeBank implements Bank {
       const lyingR = this.rng.next();
       if (lyingR < this.config.lyingTransientRate) {
         this.records.set(key, { outcome: "LYING_TRANSIENT", amountCents, bankDetails, asyncResolution: "CONFIRMED" });
+        this.recordSettlement(key, amountCents, bankDetails);
         this.asyncQueue.push({ key, type: "ASYNC_CONFIRM" });
       } else {
         this.records.set(key, { outcome: "REJECTED_TRANSIENT", amountCents, bankDetails, asyncResolution: null });
@@ -185,12 +202,16 @@ export class FakeBank implements Bank {
       const asyncResolution: "CONFIRMED" | "FAILED" =
         asyncR < this.config.asyncConfirmRate ? "CONFIRMED" : "FAILED";
       this.records.set(key, { outcome: "TIMEOUT", amountCents, bankDetails, asyncResolution });
+      // A timed-out send can still have moved the money - that is what makes a
+      // later blind resend a second transfer.
+      if (asyncResolution === "CONFIRMED") this.recordSettlement(key, amountCents, bankDetails);
       // Queue ASYNC_CONFIRM/ASYNC_FAILURE so the runner receives late notification.
       this.asyncQueue.push({ key, type: asyncResolution === "CONFIRMED" ? "ASYNC_CONFIRM" : "ASYNC_FAILURE" });
       return { type: "TIMEOUT" };
     }
 
     this.records.set(key, { outcome: "ACCEPTED", amountCents, bankDetails, asyncResolution: null });
+    this.recordSettlement(key, amountCents, bankDetails);
     // Optionally queue a duplicate confirm (simulates late duplicate from bank).
     if (this.rng.next() < this.config.duplicateConfirmRate) {
       this.asyncQueue.push({ key, type: "ASYNC_CONFIRM" });
@@ -262,6 +283,25 @@ export class FakeBank implements Bank {
    */
   getSettlementsByAccount(): ReadonlyMap<string, AccountSettlement> {
     const byAccount = new Map<string, AccountSettlement>();
+
+    // No bank-side key dedupe: count actual transfers, so a resend of an already
+    // settled key shows up as a second settlement instead of overwriting it.
+    if (!this.config.dedupe) {
+      for (const settlement of this.settlementLedger) {
+        const existing = byAccount.get(settlement.bankDetails);
+        if (existing) {
+          existing.totalCents += settlement.amountCents;
+          existing.sendCount++;
+        } else {
+          byAccount.set(settlement.bankDetails, {
+            totalCents: settlement.amountCents,
+            sendCount: 1,
+          });
+        }
+      }
+      return byAccount;
+    }
+
     for (const record of this.records.values()) {
       if (this.isSettled(record)) {
         const existing = byAccount.get(record.bankDetails);
@@ -287,6 +327,16 @@ export class FakeBank implements Bank {
   // -------------------------------------------------------------------------
   // Private helpers
   // -------------------------------------------------------------------------
+
+  /**
+   * Append one transfer to the settlement ledger.
+   * Only when dedupe=false: with the bank's idempotency on, runs rely on the
+   * key record and must keep the old one-row-per-key accounting.
+   */
+  private recordSettlement(key: IdempotencyKey, amountCents: Cents, bankDetails: string): void {
+    if (this.config.dedupe) return;
+    this.settlementLedger.push({ key, amountCents, bankDetails });
+  }
 
   private isSettled(record: KeyRecord): boolean {
     return (
