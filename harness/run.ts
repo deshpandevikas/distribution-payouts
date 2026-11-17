@@ -164,9 +164,11 @@ async function runScenario(seed: number, opts: ReturnType<typeof parseArgs>) {
   const bankRng = rngFromSeed(seed + 1); // separate RNG stream for bank
   const bank = new FakeBank(bankRng, scenario.bankConfig);
 
-  // Fake clock: starts at 0, advances by 1ms on each call.
+  // Fake clock: starts at 0. now() advances 1ms per call for call ordering;
+  // sleep(ms) must advance by exactly ms, or time-based logic (settle window,
+  // backoff) can never elapse and its paths are silently dead (R3).
   let now = 0;
-  const clock = { now: () => now++, sleep: async () => { now += 1; } };
+  const clock = { now: () => now++, sleep: async (ms: number) => { now += ms; } };
 
   const runner = new Runner({
     store,

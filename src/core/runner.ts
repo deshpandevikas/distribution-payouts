@@ -364,7 +364,12 @@ export class Runner {
         // UNKNOWN state.
         if (insideWindow) {
           // Stay UNKNOWN - inside settle window, wait for bank to settle.
-          return this.applyAndSave(payment, { type: "STATUS_NOT_FOUND_IN_WINDOW" });
+          // Sleeping the remaining window is what makes the window elapse at
+          // all: without it the next check happens at the same instant, burns
+          // the status-check budget and the payment never reaches a resend (R3).
+          const waiting = await this.applyAndSave(payment, { type: "STATUS_NOT_FOUND_IN_WINDOW" });
+          await this.clock.sleep(this.config.settleWindowMs - age);
+          return waiting;
         }
         // Outside window: move back to SENDING for resend.
         return this.applyAndSave(payment, { type: "STATUS_NOT_FOUND" });
