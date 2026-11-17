@@ -71,6 +71,19 @@ export interface FakeBankConfig {
    * Default 0 (no lag).
    */
   lagChecks: number;
+  /**
+   * 0-1 probability that a notification (ASYNC_CONFIRM / ASYNC_FAILURE) is lost
+   * before it ever reaches us. Real banks lose webhooks; the money has still
+   * moved, so only a status query can reveal the truth. Default 0 - every event
+   * is delivered, which was the only behaviour in Phase 1.
+   */
+  asyncDropRate: number;
+  /**
+   * Deliver a notification only after this many status queries for its key: the
+   * bank knows the outcome but tells us late. Default 0 (delivered on the first
+   * drain).
+   */
+  asyncDelayChecks: number;
 }
 
 export const DEFAULT_FAKE_BANK_CONFIG: FakeBankConfig = {
@@ -84,6 +97,8 @@ export const DEFAULT_FAKE_BANK_CONFIG: FakeBankConfig = {
   duplicateConfirmRate: 0,
   dedupe: true,
   lagChecks: 0,
+  asyncDropRate: 0,
+  asyncDelayChecks: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -93,6 +108,11 @@ export const DEFAULT_FAKE_BANK_CONFIG: FakeBankConfig = {
 export interface AsyncBankEvent {
   key: IdempotencyKey;
   type: "ASYNC_CONFIRM" | "ASYNC_FAILURE";
+}
+
+/** Queued event plus the status-query count at which it becomes deliverable. */
+interface QueuedAsyncEvent extends AsyncBankEvent {
+  readyAtQueryCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,8 +160,10 @@ export class FakeBank implements Bank {
    * twice. Only populated when dedupe=false (see recordSettlement).
    */
   private readonly settlementLedger: Settlement[] = [];
-  private readonly asyncQueue: AsyncBankEvent[] = [];
+  private readonly asyncQueue: QueuedAsyncEvent[] = [];
   private readonly lagCheckCounts = new Map<IdempotencyKey, number>();
+  /** Status queries per key - gates delivery when asyncDelayChecks > 0 (F1). */
+  private readonly queryCounts = new Map<IdempotencyKey, number>();
   private readonly rng: Rng;
   private readonly config: FakeBankConfig;
 
@@ -190,7 +212,7 @@ export class FakeBank implements Bank {
       if (lyingR < this.config.lyingTransientRate) {
         this.records.set(key, { outcome: "LYING_TRANSIENT", amountCents, bankDetails, asyncResolution: "CONFIRMED" });
         this.recordSettlement(key, amountCents, bankDetails);
-        this.asyncQueue.push({ key, type: "ASYNC_CONFIRM" });
+        this.queueAsync(key, "ASYNC_CONFIRM");
       } else {
         this.records.set(key, { outcome: "REJECTED_TRANSIENT", amountCents, bankDetails, asyncResolution: null });
       }
@@ -206,7 +228,8 @@ export class FakeBank implements Bank {
       // later blind resend a second transfer.
       if (asyncResolution === "CONFIRMED") this.recordSettlement(key, amountCents, bankDetails);
       // Queue ASYNC_CONFIRM/ASYNC_FAILURE so the runner receives late notification.
-      this.asyncQueue.push({ key, type: asyncResolution === "CONFIRMED" ? "ASYNC_CONFIRM" : "ASYNC_FAILURE" });
+      // A lost notification (asyncDropRate) is simply never queued.
+      this.queueAsync(key, asyncResolution === "CONFIRMED" ? "ASYNC_CONFIRM" : "ASYNC_FAILURE");
       return { type: "TIMEOUT" };
     }
 
@@ -214,7 +237,7 @@ export class FakeBank implements Bank {
     this.recordSettlement(key, amountCents, bankDetails);
     // Optionally queue a duplicate confirm (simulates late duplicate from bank).
     if (this.rng.next() < this.config.duplicateConfirmRate) {
-      this.asyncQueue.push({ key, type: "ASYNC_CONFIRM" });
+      this.queueAsync(key, "ASYNC_CONFIRM");
     }
     return { type: "ACCEPTED" };
   }
@@ -224,6 +247,10 @@ export class FakeBank implements Bank {
   // -------------------------------------------------------------------------
 
   async getStatus(key: IdempotencyKey): Promise<BankStatusResponse> {
+    // Count every query, whatever it answers: a delayed notification (F1) is
+    // released once the bank has been asked this many times for that key.
+    this.queryCounts.set(key, (this.queryCounts.get(key) ?? 0) + 1);
+
     if (!this.config.statusQueryEnabled) {
       return { type: "NOT_FOUND" };
     }
@@ -320,8 +347,25 @@ export class FakeBank implements Bank {
   // Async event delivery
   // -------------------------------------------------------------------------
 
+  /**
+   * Return the notifications that are deliverable now.
+   *
+   * With asyncDelayChecks > 0 an event stays queued until the key has been
+   * status-queried that many times, so the caller really queries the bank first
+   * and the notification arrives late - which is what a lost or slow webhook
+   * looks like from our side.
+   */
   drainAsyncEvents(): AsyncBankEvent[] {
-    return this.asyncQueue.splice(0);
+    const ready: AsyncBankEvent[] = [];
+    for (let i = this.asyncQueue.length - 1; i >= 0; i--) {
+      const ev = this.asyncQueue[i]!;
+      const readyAt = ev.readyAtQueryCount ?? 0;
+      if ((this.queryCounts.get(ev.key) ?? 0) >= readyAt) {
+        ready.push({ key: ev.key, type: ev.type });
+        this.asyncQueue.splice(i, 1);
+      }
+    }
+    return ready.reverse();
   }
 
   // -------------------------------------------------------------------------
@@ -336,6 +380,22 @@ export class FakeBank implements Bank {
   private recordSettlement(key: IdempotencyKey, amountCents: Cents, bankDetails: string): void {
     if (this.config.dedupe) return;
     this.settlementLedger.push({ key, amountCents, bankDetails });
+  }
+
+  /**
+   * Queue one notification, applying the two delivery failure modes (F1).
+   * The Rng is only drawn when a rate is non-zero, so every existing config
+   * keeps the exact stream - and therefore the exact outcomes - it had before.
+   */
+  private queueAsync(key: IdempotencyKey, type: AsyncBankEvent["type"]): void {
+    if (this.config.asyncDropRate > 0 && this.rng.next() < this.config.asyncDropRate) {
+      return; // notification lost in transit
+    }
+    this.asyncQueue.push({
+      key,
+      type,
+      readyAtQueryCount: (this.queryCounts.get(key) ?? 0) + this.config.asyncDelayChecks,
+    });
   }
 
   private isSettled(record: KeyRecord): boolean {
