@@ -105,10 +105,18 @@ export function generate(seed: number, opts: GenerateOptions = {}): Scenario {
     ...(opts.bankConfig ?? {}),
   };
 
+  // Status-visibility lag for a deterministic subset of seeds: the bank has the
+  // record but reports NOT_FOUND for the first checks. That is what exercises
+  // the settle-window wait-then-resend path in the default sweep, instead of
+  // only inside tuned break-it configs (C3).
+  if (opts.bankConfig?.lagChecks === undefined) {
+    bankConfig.lagChecks = seed % 7 === 0 ? 2 : 0;
+  }
+
   const runnerConfig: RunnerConfig = {
     ...DEFAULT_RUNNER_CONFIG,
-    // Keep settle window short for harness speed.
-    settleWindowMs: 0,
+    // Use the real settle window (DEFAULT_RUNNER_CONFIG): a zero window meant
+    // the "wait, then resend" branch never ran in any scenario (C3).
     ...(opts.runnerConfig ?? {}),
   };
 
