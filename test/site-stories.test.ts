@@ -1,11 +1,11 @@
 /**
- * H1: the replay page's five stories, as tests.
+ * H1: the replay page's six stories, as tests.
  *
  * The page promises a stranger that a story ends a particular way: three normal
- * days pass, and two planted bugs are caught. That promise is only worth making
- * if it is asserted, so every expectation the page shows before running is
- * checked here against the real runner, the real transition table and the real
- * checker - same code the browser bundles.
+ * days pass, two planted bugs are caught, and one ends with a person holding the
+ * money. That promise is only worth making if it is asserted, so every ending
+ * the page shows is checked here against the real runner, the real transition
+ * table and the real checker - same code the browser bundles.
  *
  * Each story also has to actually contain the thing it is named after: a story
  * called "bank times out" that never times out teaches nothing.
@@ -30,14 +30,15 @@ async function runStory(id: string): Promise<{ story: Story; outcome: ReplayOutc
 
 const PASS_LINE = "Passed: everyone paid exactly once, $600.00 accounted for";
 
-describe("H1: five stories, fixed seeds", () => {
-  it("ships exactly the five stories the page advertises, with unique link ids", () => {
+describe("H1: six stories, fixed seeds", () => {
+  it("ships exactly the six stories the page advertises, with unique link ids", () => {
     expect(STORIES.map((s) => s.id)).toEqual([
       "normal-day",
       "bank-timeout",
       "try-later",
       "new-key-on-retry",
       "resend-without-asking",
+      "bank-goes-quiet",
     ]);
 
     expect(new Set(STORIES.map((s) => s.id)).size).toBe(STORIES.length);
@@ -59,6 +60,9 @@ describe("H1: five stories, fixed seeds", () => {
     expect(STORIES.filter((s) => s.expects.kind === "catch").map((s) => s.id)).toEqual([
       "new-key-on-retry",
       "resend-without-asking",
+    ]);
+    expect(STORIES.filter((s) => s.expects.kind === "review").map((s) => s.id)).toEqual([
+      "bank-goes-quiet",
     ]);
   });
 });
@@ -152,6 +156,32 @@ describe("H1: the two planted bugs are caught", () => {
     const row = doublePaid[0]!;
     const extra = row.amountCents; // paid twice: one whole allocation extra
     expect(verdictFor(s, outcome).headline).toContain(`$${(extra / 100).toFixed(2)} extra`);
+  });
+});
+
+describe("H1: the story that hands the money to a person", () => {
+  it("bank goes quiet: one payment stuck, nobody double-paid, a human owns it", async () => {
+    const { story: s, outcome } = await runStory("bank-goes-quiet");
+
+    expect(outcome.violations).toEqual([]);
+
+    const rows = paymentRows(outcome);
+    expect(rows.filter((r) => r.state === "MANUAL_REVIEW").map((r) => r.investorId)).toEqual(["inv-4"]);
+    expect(rows.every((r) => r.paidTimes <= 1)).toBe(true);
+
+    const settled = rows.filter((r) => r.amountCents > 0 && r.state !== "MANUAL_REVIEW");
+    expect(settled.every((r) => r.state === "CONFIRMED" && r.paidTimes === 1)).toBe(true);
+
+    // The story has to really go quiet: a timeout, then the check budget spent.
+    const events = outcome.audit.filter((e) => e.investorId === "inv-4").map((e) => e.event);
+    expect(events).toContain("BANK_TIMEOUT");
+    expect(events).toContain("CHECKS_EXHAUSTED");
+
+    expect(verdictFor(s, outcome)).toEqual({
+      tone: "review",
+      headline:
+        "Needs a human: inv-4's $145.95 is stuck, and the bank will not say whether it moved.",
+    });
   });
 });
 

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Nobody gets paid twice - payout replay</title>
+    <title>Did the money move? - payout replay</title>
     <style>
       :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; --line: #8884; }
       body { margin: 0 auto; padding: 1.5rem; max-width: 1000px; line-height: 1.5; }
@@ -13,6 +13,8 @@
       .lead { font-size: 1.05rem; max-width: 62ch; margin: 0 0 .4rem; }
       .lead strong { display: block; margin-top: .4rem; }
       .sub { opacity: .75; font-size: .82rem; margin: .2rem 0; }
+      #gaps ul { padding-left: 1.1rem; }
+      #proof a, #gaps a { color: inherit; }
 
       .stories { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: .6rem; margin: 1.1rem 0 .8rem; }
       .story { display: flex; flex-direction: column; gap: .35rem; text-align: left; font: inherit; padding: .7rem .8rem; border: 1px solid var(--line); border-radius: .6rem; background: transparent; cursor: pointer; }
@@ -30,6 +32,7 @@
       .verdict { margin: 1.1rem 0 0; padding: .9rem 1rem; border-radius: .6rem; border: 1px solid var(--line); font-size: 1.15rem; font-weight: 650; }
       .verdict.pass { border-color: light-dark(#17794b, #6ee7a8); background: light-dark(#17794b1a, #6ee7a81a); color: light-dark(#17794b, #6ee7a8); }
       .verdict.catch { border-color: light-dark(#c02626, #ff9b9b); background: light-dark(#c026261a, #ff9b9b1a); color: light-dark(#c02626, #ff9b9b); }
+      .verdict.review { border-color: light-dark(#b45309, #fbbf24); background: light-dark(#b453091a, #fbbf241a); color: light-dark(#b45309, #fbbf24); }
       .verdict-text { display: block; }
       .verdict-note { display: block; margin-top: .35rem; font-size: .82rem; font-weight: 400; opacity: .85; }
 
@@ -49,12 +52,13 @@
     </style>
   </head>
   <body>
-    <h1>Nobody gets paid twice</h1>
+    <h1>Did the money move?</h1>
 
     <p class="lead">
-      A fund pays 6 investors through a bank that sometimes misbehaves.
-      <strong>The rule: nobody gets paid twice, and no money goes missing.
-      Pick a story and press Play.</strong>
+      A fund pays 6 investors through a bank that times out, loses notifications
+      and sometimes lies.
+      <strong>A timeout means we do not know whether the money moved, so we ask
+      the bank before we resend. Pick a story and press Play.</strong>
     </p>
 
     <section id="stories" class="stories" aria-label="Stories"></section>
@@ -67,6 +71,29 @@
     <p id="verdict" class="verdict" role="status" hidden></p>
 
     <section id="payments"></section>
+
+    <p class="sub" id="proof">
+      The same checker grades these runs and 2,000 seeded scenarios in CI, plus five
+      deliberately planted bugs it must catch: exit 1 means caught, and a crash is not a catch.
+      <a href="https://github.com/deshpandevikas/distribution-payouts/blob/main/DESIGN.md">Design and trade-offs</a> ·
+      <a href="https://github.com/deshpandevikas/distribution-payouts">Source</a>
+    </p>
+
+    <details id="gaps">
+      <summary>What this does not do (yet)</summary>
+      <ul class="sub">
+        <li>No maker-checker approval, identity hold or cancellation: designed, not built.</li>
+        <li>No returns or reversals: money can only go out today.</li>
+        <li>MANUAL_REVIEW has no admin write path: a human resolves it outside the system.</li>
+        <li>USD only, integer cents, no per-currency minor units.</li>
+        <li>A fake bank, not a real one: no ISO 20022, no settlement cut-off times.</li>
+        <li>One process and a SQLite file, not a distributed deployment.</li>
+      </ul>
+      <p class="sub">
+        The reasoning behind those gaps is in
+        <a href="https://github.com/deshpandevikas/distribution-payouts/blob/main/docs/agreed-decisions.md">agreed decisions</a>.
+      </p>
+    </details>
 
     <details id="advanced">
       <summary>Advanced: seed, bank settings and the raw audit log</summary>

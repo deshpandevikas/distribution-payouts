@@ -9,7 +9,7 @@ transient rejections, crash injection, an invariant checker that reads only outp
 randomized scenarios per harness run, and five bugs that the harness must catch (exit 1, not
 0, and not a crash).
 
-- **Replay page:** https://deshpandevikas.github.io/distribution-payouts/ — run a seed in the browser, flip a bug on, watch the invariant fail.
+- **Replay page:** https://deshpandevikas.github.io/distribution-payouts/ — six stories: three pay everyone once, two double-pay an investor and get caught, one hands the money to a human. Or run a seed of your own.
 - **CI:** https://github.com/deshpandevikas/distribution-payouts/actions/workflows/ci.yml
 
 ## The idea in five lines
