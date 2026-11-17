@@ -11,7 +11,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "harness": "tsx harness/run.ts",
-    "harness:break": "tsx harness/run.ts --scenarios=200 --break-it"
+    "harness:break": "tsx harness/run.ts --scenarios=200 --break-it",
+    "temporal:worker": "tsx src/temporal/worker.ts",
+    "temporal:start": "tsx src/temporal/start.ts"
   },
   "devDependencies": {
     "@temporalio/testing": "1.26.0",

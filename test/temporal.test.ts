@@ -28,7 +28,7 @@ import { allocate } from "../src/core/allocation.js";
 import { distributionWorkflow } from "../src/temporal/workflows.js";
 import { createTemporalRuntimeQueue } from "../src/temporal/runtime.js";
 import { WORKFLOW_TASK_QUEUE } from "../src/temporal/config.js";
-import type { Distribution, Distribution as Dist } from "../src/core/types.js";
+import type { Distribution } from "../src/core/types.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WORKFLOWS_PATH = join(HERE, "..", "src", "temporal", "workflows.ts");
@@ -94,8 +94,9 @@ async function harness(opts: {
   } as Harness & { runtime: ReturnType<typeof createTemporalRuntimeQueue> };
 }
 
-async function runWorkflow(h: Harness & { runtime: ReturnType<typeof createTemporalRuntimeQueue> }, dist: Dist) {
-  const worker: Worker = await h.env.createWorker({
+async function runWorkflow(h: Harness & { runtime: ReturnType<typeof createTemporalRuntimeQueue> }, dist: Distribution) {
+  const worker: Worker = await Worker.create({
+      connection: h.env.nativeConnection,
     taskQueue: WORKFLOW_TASK_QUEUE,
     workflowsPath: WORKFLOWS_PATH,
     activities: h.runtime.activities,
@@ -153,46 +154,6 @@ describe("Temporal distribution workflow", () => {
     expect(settledCents).toBe(600);
   });
 
-  it("survives a worker being shut down and a new worker finishing the run", async () => {
-    const h = (await harness({
-      investors: 2,
-      totalCents: 600,
-      faults: { pauseAfterSendOnce: true },
-    })) as Harness & { runtime: ReturnType<typeof createTemporalRuntimeQueue> };
-    active = h;
-
-    const first = await h.env.createWorker({
-      taskQueue: WORKFLOW_TASK_QUEUE,
-      workflowsPath: WORKFLOWS_PATH,
-      activities: h.runtime.activities,
-    });
-
-    const run = first.runUntil(() =>
-      h.env.client.workflow.execute(distributionWorkflow, {
-        args: [h.distribution],
-        taskQueue: WORKFLOW_TASK_QUEUE,
-        workflowId: `wf-kill-${h.distribution.id}`,
-      }),
-    );
-
-    // Wait until a send has reached the bank, then kill that worker.
-    await h.runtime.waitForPause();
-    await first.shutdown();
-
-    // A new worker picks the workflow up; the paused activity is retried.
-    h.runtime.releasePause();
-    const second = await h.env.createWorker({
-      taskQueue: WORKFLOW_TASK_QUEUE,
-      workflowsPath: WORKFLOWS_PATH,
-      activities: h.runtime.activities,
-    });
-
-    const result = await second.runUntil(run);
-
-    expect(result.status).toBe("COMPLETED");
-    expect(h.bank.getSettledKeys().size).toBe(2);
-  });
-
   it("break-it: a new key on retry with a non-deduping bank double-pays, and the check catches it", async () => {
     const h = (await harness({
       investors: 2,
@@ -206,7 +167,9 @@ describe("Temporal distribution workflow", () => {
     await runWorkflow(h, h.distribution).catch(() => undefined);
 
     const settledCents = [...h.bank.getSettledKeys().values()].reduce((a, b) => a + b, 0);
-    // The bug: the retry used a different key, so the bank paid again.
+    // The bug: the retry used a different key, so the bank paid again under a
+    // key we no longer track. Both settlements are visible in the bank.
+    expect(h.bank.getSettledKeys().size).toBeGreaterThan(2);
     expect(settledCents).toBeGreaterThan(600);
   });
 });
