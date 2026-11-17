@@ -14,6 +14,7 @@
     "harness:break": "tsx harness/run.ts --scenarios=200 --break-it"
   },
   "devDependencies": {
+    "@temporalio/testing": "1.26.0",
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "26.6.6",
     "fast-check": "4.10.2",
@@ -23,6 +24,11 @@
     "vitest": "5.1.0"
   },
   "dependencies": {
+    "@temporalio/activity": "1.26.0",
+    "@temporalio/client": "1.26.0",
+    "@temporalio/common": "1.26.0",
+    "@temporalio/worker": "1.26.0",
+    "@temporalio/workflow": "1.26.0",
     "better-sqlite3": "13.2.0"
   }
 }
