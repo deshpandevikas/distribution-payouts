@@ -142,8 +142,11 @@ describe("read-only MCP server", () => {
     expect(text).toContain("ASYNC_CONFIRM");
     // The contradiction that escalated it, not just the final state.
     expect(text).toMatch(/contradiction/i);
-    // The trail, in order.
-    expect(text.indexOf("SEND_INTENT_RECORDED")).toBeLessThan(text.indexOf("ASYNC_CONFIRM"));
+    // The trail, in order. Scoped to the trail section: the "Why:" sentence
+    // legitimately names ASYNC_CONFIRM before the trail lists it.
+    const trail = text.slice(text.indexOf("Audit trail:"));
+    expect(trail.indexOf("SEND_INTENT_RECORDED")).toBeLessThan(trail.indexOf("ASYNC_CONFIRM"));
+    expect(trail.indexOf("TRANSIENT_RETRIES_EXHAUSTED")).toBeLessThan(trail.indexOf("ASYNC_CONFIRM"));
     expect(text).toContain("TRANSIENT_RETRIES_EXHAUSTED");
   });
 

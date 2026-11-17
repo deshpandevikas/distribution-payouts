@@ -14,6 +14,7 @@
     "harness:break": "tsx harness/run.ts --scenarios=200 --break-it",
     "site:dev": "vite --config vite.site.config.ts",
     "site:build": "vite build --config vite.site.config.ts",
+    "mcp:server": "tsx src/mcp/main.ts",
     "temporal:worker": "tsx src/temporal/worker.ts",
     "temporal:start": "tsx src/temporal/start.ts"
   },
