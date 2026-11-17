@@ -103,6 +103,36 @@ export interface AuditEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Alerts / non-payment records
+// ---------------------------------------------------------------------------
+//
+// Things an operator must see that are NOT payment state changes: a bank event
+// for a key we never sent, an allocation that produced no payment. There is no
+// payment to hang them on, so they must not be written as payment audit rows
+// (a fabricated CREATED -> MANUAL_REVIEW row was invisible to the operator's
+// listAudit(distributionId) query).
+
+export type AlertKind =
+  /** Bank reported an event for an idempotency key with no payment here. */
+  | "BANK_EVENT_FOR_UNKNOWN_KEY"
+  /** An allocation produced zero cents, so no payment was created (decision #13). */
+  | "ALLOCATION_SKIPPED";
+
+export interface AlertRecord {
+  kind: AlertKind;
+  distributionId: DistributionId;
+  /** Payment this concerns, when one exists. Absent for a skipped allocation. */
+  paymentId?: PaymentId;
+  investorId?: InvestorId;
+  /** Bank event that triggered the alert, when there is one. */
+  event?: PaymentEvent["type"];
+  /** Human-readable evidence for the operator. */
+  detail: string;
+  /** Injected wall-clock milliseconds. */
+  timestamp: number;
+}
+
+// ---------------------------------------------------------------------------
 // Investor + Distribution
 // ---------------------------------------------------------------------------
 
@@ -265,6 +295,13 @@ export interface Store {
   listPayments(distributionId: DistributionId): Payment[];
   appendAudit(entry: AuditEntry): void;
   listAudit(distributionId: DistributionId): AuditEntry[];
+  /**
+   * Append an operator alert / non-payment record.
+   * Never a payment state change: alerts are keyed to the distribution, so an
+   * operator querying a distribution sees them even when no payment exists.
+   */
+  appendAlert(record: AlertRecord): void;
+  listAlerts(distributionId: DistributionId): AlertRecord[];
   /**
    * Atomically write a payment state change and its audit entry.
    * In MemoryStore this is synchronous and trivially atomic.
