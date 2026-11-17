@@ -3,60 +3,104 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Distribution payouts - replay</title>
+    <title>Nobody gets paid twice - payout replay</title>
     <style>
-      :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; }
-      body { margin: 0; padding: 1.25rem; max-width: 1100px; line-height: 1.45; }
-      h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
-      .sub { opacity: .7; margin: 0 0 1rem; font-size: .85rem; }
-      form { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; padding: .75rem; border: 1px solid #8884; border-radius: .5rem; }
-      label { display: flex; flex-direction: column; font-size: .75rem; gap: .2rem; }
-      input[type=number] { width: 7rem; }
-      button { padding: .4rem .9rem; font-weight: 600; cursor: pointer; }
-      table { border-collapse: collapse; width: 100%; font-size: .82rem; margin-top: .5rem; }
-      th, td { text-align: left; padding: .25rem .4rem; border-bottom: 1px solid #8883; }
+      :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; --line: #8884; }
+      body { margin: 0 auto; padding: 1.5rem; max-width: 1000px; line-height: 1.5; }
+      h1 { font-size: 1.7rem; margin: 0 0 .6rem; }
+      h2 { font-size: 1.05rem; margin: 1.3rem 0 .4rem; }
+      h3 { font-size: .95rem; margin: 1rem 0 .3rem; }
+      .lead { font-size: 1.05rem; max-width: 62ch; margin: 0 0 .4rem; }
+      .lead strong { display: block; margin-top: .4rem; }
+      .sub { opacity: .75; font-size: .82rem; margin: .2rem 0; }
+
+      .stories { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: .6rem; margin: 1.1rem 0 .8rem; }
+      .story { display: flex; flex-direction: column; gap: .35rem; text-align: left; font: inherit; padding: .7rem .8rem; border: 1px solid var(--line); border-radius: .6rem; background: transparent; cursor: pointer; }
+      .story:hover { border-color: light-dark(#2b6cb0, #7fb3e8); }
+      .story[aria-pressed="true"] { border-color: light-dark(#2b6cb0, #7fb3e8); box-shadow: 0 0 0 2px light-dark(#2b6cb033, #7fb3e833); }
+      .story-title { font-weight: 700; font-size: .95rem; }
+      .story-expect { font-size: .8rem; opacity: .85; }
+      .story-expect strong { font-weight: 600; }
+
+      .playbar { display: flex; align-items: center; gap: .9rem; flex-wrap: wrap; }
+      #play { font: inherit; font-weight: 700; padding: .6rem 1.7rem; border-radius: .5rem; border: 1px solid light-dark(#2b6cb0, #7fb3e8); background: light-dark(#2b6cb0, #7fb3e8); color: light-dark(#fff, #10212f); cursor: pointer; }
+      #play:disabled { opacity: .6; cursor: progress; }
+      #selection { font-size: .85rem; opacity: .8; }
+
+      .verdict { margin: 1.1rem 0 0; padding: .9rem 1rem; border-radius: .6rem; border: 1px solid var(--line); font-size: 1.15rem; font-weight: 650; }
+      .verdict.pass { border-color: light-dark(#17794b, #6ee7a8); background: light-dark(#17794b1a, #6ee7a81a); color: light-dark(#17794b, #6ee7a8); }
+      .verdict.catch { border-color: light-dark(#c02626, #ff9b9b); background: light-dark(#c026261a, #ff9b9b1a); color: light-dark(#c02626, #ff9b9b); }
+      .verdict-text { display: block; }
+      .verdict-note { display: block; margin-top: .35rem; font-size: .82rem; font-weight: 400; opacity: .85; }
+
+      table { border-collapse: collapse; width: 100%; font-size: .84rem; margin-top: .4rem; }
+      th, td { text-align: left; padding: .3rem .45rem; border-bottom: 1px solid #8883; vertical-align: top; }
+      th { font-size: .76rem; text-transform: uppercase; letter-spacing: .03em; opacity: .75; }
+      .money { font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .state { font-family: ui-monospace, monospace; font-size: .78rem; white-space: nowrap; }
       code { font-size: .78rem; }
-      .ok { color: #17794b; font-weight: 600; }
-      .bad { color: #c02626; font-weight: 600; }
-      section { margin-top: 1.25rem; }
-      h2 { font-size: 1rem; margin: 0 0 .25rem; }
-      .state { font-family: ui-monospace, monospace; font-size: .78rem; }
+
+      details { margin-top: 1.6rem; border-top: 1px solid var(--line); padding-top: .8rem; }
+      summary { cursor: pointer; font-weight: 600; }
+      form { display: flex; flex-wrap: wrap; gap: .7rem; align-items: end; margin: .8rem 0; }
+      label { display: flex; flex-direction: column; gap: .2rem; font-size: .72rem; }
+      input[type=number] { width: 7rem; }
+      form button { padding: .35rem .8rem; font: inherit; }
     </style>
   </head>
   <body>
-    <h1>Distribution payouts - replay</h1>
-    <p class="sub">
-      Same core as the runner and the harness: in-memory store, fake bank, real transition table.
-      A seed always produces the same run, so a link is a reproducible scenario.
+    <h1>Nobody gets paid twice</h1>
+
+    <p class="lead">
+      A fund pays 6 investors through a bank that sometimes misbehaves.
+      <strong>The rule: nobody gets paid twice, and no money goes missing.
+      Pick a story and press Play.</strong>
     </p>
 
-    <form id="controls">
-      <label>Seed <input id="seed" type="number" min="1" value="1" /></label>
-      <label>Investors <input id="investors" type="number" min="1" max="40" value="6" /></label>
-      <label>Total cents <input id="total" type="number" min="1" step="1" value="60000" /></label>
-      <label>Timeout rate <input id="timeoutRate" type="number" min="0" max="1" step="0.05" value="0.2" /></label>
-      <label>Transient reject rate <input id="transientRejectRate" type="number" min="0" max="1" step="0.05" value="0.1" /></label>
-      <label>Lying transient rate <input id="lyingTransientRate" type="number" min="0" max="1" step="0.05" value="0" /></label>
-      <label>Async confirm rate <input id="asyncConfirmRate" type="number" min="0" max="1" step="0.05" value="0.5" /></label>
-      <label>Late confirm (checks) <input id="asyncDelayChecks" type="number" min="0" step="1" value="0" /></label>
-      <label>Dropped confirm rate <input id="asyncDropRate" type="number" min="0" max="1" step="0.05" value="0" /></label>
-      <label>Break-it flag
-        <select id="flag">
-          <option value="">none</option>
-          <option value="skipIntentRecord">skipIntentRecord</option>
-          <option value="timeoutAsFailure">timeoutAsFailure</option>
-          <option value="newKeyOnRetry">newKeyOnRetry</option>
-          <option value="overwriteConflictingConfirm">overwriteConflictingConfirm</option>
-          <option value="resendWithoutStatusCheck">resendWithoutStatusCheck</option>
-        </select>
-      </label>
-      <button type="submit">Run</button>
-    </form>
+    <section id="stories" class="stories" aria-label="Stories"></section>
 
-    <section id="summary"></section>
-    <section id="invariants"></section>
+    <div class="playbar">
+      <button id="play" type="button">Play</button>
+      <span id="selection"></span>
+    </div>
+
+    <p id="verdict" class="verdict" role="status" hidden></p>
+
     <section id="payments"></section>
-    <section id="audit"></section>
+
+    <details id="advanced">
+      <summary>Advanced: seed, bank settings and the raw audit log</summary>
+      <p class="sub">
+        Every story above is just a seed and a set of bank settings. Change them
+        here to run a scenario of your own; the URL keeps <code>?seed=</code>
+        links working.
+      </p>
+
+      <form id="controls">
+        <label>Seed <input id="seed" type="number" min="1" value="1" /></label>
+        <label>Investors <input id="investors" type="number" min="1" max="40" value="6" /></label>
+        <label>Total cents <input id="total" type="number" min="1" step="1" value="60000" /></label>
+        <label>Timeout rate <input id="timeoutRate" type="number" min="0" max="1" step="0.05" value="0.2" /></label>
+        <label>Transient reject rate <input id="transientRejectRate" type="number" min="0" max="1" step="0.05" value="0.1" /></label>
+        <label>Lying transient rate <input id="lyingTransientRate" type="number" min="0" max="1" step="0.05" value="0" /></label>
+        <label>Async confirm rate <input id="asyncConfirmRate" type="number" min="0" max="1" step="0.05" value="0.5" /></label>
+        <label>Late confirm (checks) <input id="asyncDelayChecks" type="number" min="0" step="1" value="0" /></label>
+        <label>Dropped confirm rate <input id="asyncDropRate" type="number" min="0" max="1" step="0.05" value="0" /></label>
+        <label>Break-it flag
+          <select id="flag">
+            <option value="">none</option>
+            <option value="skipIntentRecord">skipIntentRecord</option>
+            <option value="timeoutAsFailure">timeoutAsFailure</option>
+            <option value="newKeyOnRetry">newKeyOnRetry</option>
+            <option value="overwriteConflictingConfirm">overwriteConflictingConfirm</option>
+            <option value="resendWithoutStatusCheck">resendWithoutStatusCheck</option>
+          </select>
+        </label>
+        <button type="submit">Run with these settings</button>
+      </form>
+
+      <section id="advancedBody"></section>
+    </details>
 
     <script type="module" src="./main.ts"></script>
   </body>

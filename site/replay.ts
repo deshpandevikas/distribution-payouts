@@ -19,6 +19,7 @@ import { check } from "../harness/check.js";
 import type { InvariantViolation } from "../harness/check.js";
 import { makeSeededRng, rngFromSeed } from "../harness/generate.js";
 import type {
+  AllocatedPayment,
   AuditEntry,
   Distribution,
   Investor,
@@ -46,6 +47,20 @@ export interface ReplayOptions {
   flag: BreakItFlag | "";
 }
 
+/**
+ * What the bank actually did for one account, next to what we allocated to it.
+ * `paidTimes` is the number of real transfers, which is what makes "paid twice"
+ * sayable without trusting our own store: our store can only ever show one
+ * payment per investor, however many times the money moved.
+ */
+export interface SettlementRow {
+  account: string;
+  investorId: string | null;
+  allocatedCents: number;
+  paidCents: number;
+  paidTimes: number;
+}
+
 export interface ReplayOutcome {
   distributionId: string;
   totalAllocatedCents: number;
@@ -53,6 +68,8 @@ export interface ReplayOutcome {
   payments: Payment[];
   audit: AuditEntry[];
   violations: InvariantViolation[];
+  allocations: AllocatedPayment[];
+  settlements: SettlementRow[];
 }
 
 export function buildDistribution(options: ReplayOptions): Distribution {
@@ -118,5 +135,40 @@ export async function replay(options: ReplayOptions): Promise<ReplayOutcome> {
     payments: store.listPayments(distribution.id),
     audit: store.listAudit(distribution.id),
     violations: checkResult.violations,
+    allocations: distribution.allocations,
+    settlements: buildSettlements(distribution.allocations, bank),
   };
+}
+
+/**
+ * Join the fund's allocation per bank account to the transfers the bank made.
+ * Accounts are sorted so two runs produce identical output (the page's tests
+ * compare whole outcomes).
+ */
+function buildSettlements(
+  allocations: AllocatedPayment[],
+  bank: FakeBank,
+): SettlementRow[] {
+  const allocated = new Map<string, { investorId: string; cents: number }>();
+  for (const allocation of allocations) {
+    const account = allocation.investor.bankDetails;
+    const existing = allocated.get(account);
+    if (existing) existing.cents += allocation.amountCents;
+    else allocated.set(account, { investorId: allocation.investor.id, cents: allocation.amountCents });
+  }
+
+  const paid = bank.getSettlementsByAccount?.() ?? new Map();
+  const accounts = [...new Set([...allocated.keys(), ...paid.keys()])].sort();
+
+  return accounts.map((account) => {
+    const ours = allocated.get(account);
+    const theirs = paid.get(account);
+    return {
+      account,
+      investorId: ours?.investorId ?? null,
+      allocatedCents: ours?.cents ?? 0,
+      paidCents: theirs?.totalCents ?? 0,
+      paidTimes: theirs?.sendCount ?? 0,
+    };
+  });
 }
