@@ -17,7 +17,12 @@
  *                                       afterBankCallBeforeRecord |
  *                                       duringStatusCheck
  *
- * Exit code: 0 if all invariants pass, 1 if any fail.
+ * Exit code:
+ *   0 - all invariants passed
+ *   1 - at least one invariant was violated (the checker caught a bug)
+ *   2 - the harness itself failed: uncaught exception, unknown flag, bad args
+ *
+ * Only 1 proves a break-it flag broke an invariant. A crash is not a catch.
  */
 
 import { Runner, CrashInjected } from "../src/core/runner.js";
@@ -80,8 +85,10 @@ function parseArgs(argv: string[]): {
         case "overwriteConflictingConfirm": breakIt.overwriteConflictingConfirm = true; break;
         case "resendWithoutStatusCheck":   breakIt.resendWithoutStatusCheck = true; break;
         default:
+          // Usage error, not an invariant violation: exit 2 so CI cannot count
+          // a typo as a flag that broke something.
           console.error(`Unknown break-it flag: ${flag}`);
-          process.exit(1);
+          process.exit(2);
       }
     } else if (arg.startsWith("--crash-at=")) {
       crashAt = arg.slice("--crash-at=".length) as CrashPoint;
@@ -111,6 +118,21 @@ const BREAK_IT_BANK_CONFIG = {
     lyingTransientRate: 1,
     permanentRejectRate: 0,
     timeoutRate: 0,
+    statusTimeoutRate: 0,
+  },
+  // resendWithoutStatusCheck resends a payment the bank may already have
+  // settled. With dedupe=true the bank collapses the replay onto the original
+  // record, so the second transfer never shows up in getSettlementsByAccount
+  // and I1 has nothing to catch. dedupe=false models a bank with no key-level
+  // idempotency: a blind resend pays the investor twice, which is the bug.
+  // Timeouts are the route into UNKNOWN; no permanent/transient rejections so
+  // the resend resolves instead of bouncing through retries.
+  resendWithoutStatusCheck: {
+    dedupe: false,
+    timeoutRate: 0.5,
+    asyncConfirmRate: 1,
+    permanentRejectRate: 0,
+    transientRejectRate: 0,
     statusTimeoutRate: 0,
   },
 } satisfies Partial<Record<keyof RunnerConfig, Partial<FakeBankConfig>>>;
@@ -234,6 +256,8 @@ async function main() {
 }
 
 main().catch((err) => {
+  // Uncaught failure (IllegalTransitionError, tsx error, bad input): exit 2.
+  // Exit 1 is reserved for "the checker found an invariant violation".
   console.error(err);
-  process.exit(1);
+  process.exit(2);
 });

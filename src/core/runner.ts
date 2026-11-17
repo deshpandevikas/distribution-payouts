@@ -305,8 +305,19 @@ export class Runner {
 
   private async checkStatus(payment: Payment): Promise<Payment> {
     if (this.config.resendWithoutStatusCheck) {
-      // Break-it flag: skip status check, resend immediately.
-      return this.sendPayment(payment);
+      // Break-it flag: skip the status query and *assume* the key was never
+      // received, then resend it. The assumption goes through the legal
+      // UNKNOWN -> SENDING transition, so the bug is a real double payment that
+      // I1 catches rather than an illegal BANK_ACCEPTED-in-UNKNOWN throw (the
+      // state machine refuses that event by design: a late accept must arrive
+      // as ASYNC_CONFIRM).
+      const resent = payment.state === "UNKNOWN"
+        ? await this.applyAndSave(payment, {
+            type: "STATUS_NOT_FOUND",
+            reason: "resendWithoutStatusCheck: assumed NOT_FOUND without querying the bank",
+          })
+        : payment;
+      return this.sendPayment(resent);
     }
 
     if (payment.statusChecks >= this.config.maxStatusChecks) {
