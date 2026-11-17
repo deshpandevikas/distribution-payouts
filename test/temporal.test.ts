@@ -273,8 +273,9 @@ describe("Temporal distribution workflow", () => {
 
     // This is what a restarted worker does with a run it has never seen: rebuild
     // the workflow state by replaying history through the current code. Any
-    // Date.now(), random number or non-deterministic branch throws here instead
-    // of passing silently, which is the property a real worker kill would test.
+    // unseeded random number or non-deterministic branch throws here instead of
+    // passing silently, which is the property a real worker kill would test.
+    // (Date.now() is fine: the sandbox maps it to workflow time.)
     await Worker.runReplayHistory(
       { workflowsPath: WORKFLOWS_PATH },
       history,

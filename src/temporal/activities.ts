@@ -32,8 +32,16 @@ export interface TemporalActivities {
    * One bank send. Returns the outcome as a value - a rejection or a timeout is
    * a business result, not an exception, so Temporal only retries this activity
    * when the worker itself fails.
+   *
+   * `nowMs` is the workflow's clock (Date.now() inside the workflow), passed in
+   * so lastSentAt is written from the same clock the settle window is measured
+   * against. An activity-side clock drifts from it, and the window is the first
+   * thing to break.
    */
-  sendOnce(id: PaymentId): Promise<{ key: IdempotencyKey; response: BankSendResponse }>;
+  sendOnce(
+    id: PaymentId,
+    nowMs: number,
+  ): Promise<{ key: IdempotencyKey; response: BankSendResponse }>;
 
   /** Persist the outcome of a send, including retry/exhaustion bookkeeping. */
   recordSendResponse(

@@ -160,9 +160,13 @@ rules: the workflow calls the same transition table through activities.
   as data, so Temporal's retries mean "the worker failed", never "the bank said no". Retrying
   a `REJECTED_PERMANENT` as if it were an infrastructure fault would be exactly the bug the
   core avoids.
-- **Determinism**: no `Date.now()`, no `Math.random()`, no Node imports. Time comes from
-  `workflowInfo().unsafe.now()`; waiting uses Temporal's `sleep`, so backoff and the settle
-  window are timers the test environment can skip and a replay can reproduce.
+- **Determinism**: no `Math.random()`, no Node imports, and `Date.now()` is the SDK's patched
+  workflow clock rather than the host's — reading it is what lets a replay reproduce the same
+  numbers. `workflowInfo().unsafe.now()` is *not* that clock: it reads system time, and mixing
+  it with an activity clock made `lastSentAt` and the settle-window check disagree, so the
+  window was skipped. The workflow therefore reads `Date.now()` once per attempt and passes the
+  value to the send activity; waiting uses Temporal's `sleep`, so backoff and the settle window
+  are timers the test environment can skip.
 - **Activities are at-least-once**, so `recordEvent` is idempotent: the activity re-reads the
   payment and applying the same event twice lands on the same state. A test kills the
   activity after its commit, lets Temporal retry, and asserts the payment moved once.
