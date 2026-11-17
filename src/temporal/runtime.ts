@@ -29,6 +29,8 @@ import { DEFAULT_RUNNER_CONFIG, TERMINAL_STATES } from "../core/types.js";
 import type { TemporalActivities } from "./activities.js";
 
 export interface TemporalFaults {
+  /** Commit a transition, then throw once - a crash between WAL commit and reply. */
+  failAfterTransitionOnce?: boolean;
   /** Reach the bank, then throw once - what a worker crash looks like to Temporal. */
   failAfterSendOnce?: boolean;
   /** Reach the bank, then block until releasePause() - a worker dying mid-activity. */
@@ -53,6 +55,10 @@ export interface TemporalRuntime {
   releasePause(): void;
   /** Resolves once the injected post-bank failure has fired. */
   waitForFault(): Promise<void>;
+  /** Resolves once the injected post-transition failure has fired. */
+  waitForTransitionFault(): Promise<void>;
+  /** How many transitions committed and then threw. */
+  transitionFaultsFired(): number;
 }
 
 export function createTemporalRuntimeQueue(opts: TemporalRuntimeOptions): TemporalRuntime {
@@ -67,6 +73,9 @@ export function createTemporalRuntimeQueue(opts: TemporalRuntimeOptions): Tempor
   const pauseReleased = new Promise<void>((resolve) => { releasePause = resolve; });
   let faultSignalled: () => void = () => {};
   const faultFired = new Promise<void>((resolve) => { faultSignalled = resolve; });
+  let transitionFaultSignalled: () => void = () => {};
+  const transitionFaultReached = new Promise<void>((resolve) => { transitionFaultSignalled = resolve; });
+  let transitionFaultCount = 0;
 
   /**
    * 1-based attempt number of the CURRENT activity execution. That is the thing
@@ -89,9 +98,34 @@ export function createTemporalRuntimeQueue(opts: TemporalRuntimeOptions): Tempor
 
   const recordEvent = async (id: PaymentId, event: PaymentEvent): Promise<Payment> => {
     const payment = mustGet(id);
+
+    // Idempotent under Temporal retries. If the newest audit row for this
+    // payment already records this event and the payment is already in that
+    // row's target state, the transition committed before the activity died.
+    // Applying it again would be illegal (or write a duplicate audit row).
+    // Rows where fromState === toState are excluded: those are legitimate
+    // repeats (e.g. staying UNKNOWN), not a retried commit.
+    const audit = opts.store.listAudit(payment.distributionId).filter((e) => e.paymentId === id);
+    const last = audit[audit.length - 1];
+    if (
+      last !== undefined &&
+      last.event === event.type &&
+      last.fromState !== last.toState &&
+      payment.state === last.toState
+    ) {
+      return payment;
+    }
+
     const result = applyEvent(payment, event, opts.clock);
     const updated: Payment = { ...payment, state: result.toState, updatedAt: opts.clock.now() };
     opts.store.transition(updated, result.auditEntry);
+
+    if (faults.failAfterTransitionOnce === true && transitionFaultCount === 0) {
+      transitionFaultCount += 1;
+      transitionFaultSignalled();
+      throw new Error("injected crash after the audit row committed");
+    }
+
     return opts.store.getPayment(id) ?? updated;
   };
 
@@ -302,5 +336,7 @@ export function createTemporalRuntimeQueue(opts: TemporalRuntimeOptions): Tempor
     waitForPause: () => pauseReached,
     releasePause: () => releasePause(),
     waitForFault: () => faultFired,
+    waitForTransitionFault: () => transitionFaultReached,
+    transitionFaultsFired: () => transitionFaultCount,
   };
 }

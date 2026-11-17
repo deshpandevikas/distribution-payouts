@@ -172,4 +172,67 @@ describe("Temporal distribution workflow", () => {
     expect(h.bank.getSettledKeys().size).toBeGreaterThan(2);
     expect(settledCents).toBeGreaterThan(600);
   });
+
+  it("replays the recorded history against the current workflow code", async () => {
+    const h = (await harness({ investors: 2, totalCents: 600 })) as Harness & {
+      runtime: ReturnType<typeof createTemporalRuntimeQueue>;
+    };
+    active = h;
+
+    const worker = await Worker.create({
+      connection: h.env.nativeConnection,
+      taskQueue: WORKFLOW_TASK_QUEUE,
+      workflowsPath: WORKFLOWS_PATH,
+      activities: h.runtime.activities,
+    });
+
+    const handle = await h.env.client.workflow.start(distributionWorkflow, {
+      args: [h.distribution],
+      taskQueue: WORKFLOW_TASK_QUEUE,
+      workflowId: `wf-replay-${h.distribution.id}`,
+    });
+    await worker.runUntil(handle.result());
+
+    const history = await handle.fetchHistory();
+    expect((history.events ?? []).length).toBeGreaterThan(0);
+
+    // This is what a restarted worker does with a run it has never seen: rebuild
+    // the workflow state by replaying history through the current code. Any
+    // Date.now(), random number or non-deterministic branch throws here instead
+    // of passing silently, which is the property a real worker kill would test.
+    await Worker.runReplayHistory(
+      { workflowsPath: WORKFLOWS_PATH },
+      history,
+      handle.workflowId,
+    );
+
+    // The replay must not re-execute activities: the money did not move again.
+    expect(h.bank.getSettledKeys().size).toBe(2);
+    expect(h.store.listPayments(h.distribution.id).every((p) => p.state === "CONFIRMED")).toBe(true);
+  }, 60_000);
+
+  it("retries a transition that committed and then threw, without duplicating the audit row", async () => {
+    const h = (await harness({
+      investors: 1,
+      totalCents: 300,
+      faults: { failAfterTransitionOnce: true },
+    })) as Harness & { runtime: ReturnType<typeof createTemporalRuntimeQueue> };
+    active = h;
+
+    const result = await runWorkflow(h, h.distribution);
+
+    // The activity committed SEND_INTENT_RECORDED, then died before returning;
+    // Temporal retried it and the retry recognised the commit.
+    expect(h.runtime.transitionFaultsFired()).toBeGreaterThan(0);
+    expect(result.status).toBe("COMPLETED");
+
+    const audit = h.store.listAudit(h.distribution.id);
+    expect(audit.filter((e) => e.event === "SEND_INTENT_RECORDED")).toHaveLength(1);
+    expect(audit.filter((e) => e.event === "BANK_ACCEPTED")).toHaveLength(1);
+
+    const payments = h.store.listPayments(h.distribution.id);
+    expect(payments).toHaveLength(1);
+    expect(payments[0]!.state).toBe("CONFIRMED");
+    expect(h.bank.getSettledKeys().size).toBe(1);
+  }, 60_000);
 });
