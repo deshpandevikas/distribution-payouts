@@ -24,7 +24,12 @@ import type { GridCellKey } from "../harness/metrics.js";
 // Fixed seeds that reliably exercise transient rejections and timeouts.
 const FIXED_SEEDS = [1, 7, 42, 99, 137];
 
-async function runWithConfig(seed: number, runnerConfig: Partial<RunnerConfig>, bankConfig = {}) {
+async function runWithConfig(
+  seed: number,
+  runnerConfig: Partial<RunnerConfig>,
+  bankConfig = {},
+  opts: { suppressAsyncEvents?: boolean } = {},
+) {
   let scenario = generate(seed, { runnerConfig, bankConfig });
   scenario = await buildDistribution(scenario);
 
@@ -33,6 +38,9 @@ async function runWithConfig(seed: number, runnerConfig: Partial<RunnerConfig>, 
     ...scenario.bankConfig,
     ...bankConfig,
   });
+  // Model a bank whose async notification has not arrived yet: without this the
+  // mid-flight drain (C6) resolves the payment before any status query runs.
+  if (opts.suppressAsyncEvents) bank.drainAsyncEvents = () => [];
   let now = 0;
   const clock = { now: () => now++, sleep: async () => { now += 1; } };
   const runner = new Runner({ store, bank, clock, rng: rngFromSeed(seed + 2), config: { ...scenario.runnerConfig, ...runnerConfig } });
@@ -161,7 +169,12 @@ describe("R6: overwriteConflictingConfirm", () => {
 describe("R6: resendWithoutStatusCheck", () => {
   it("(a) flag-OFF exercises UNKNOWN:BANK_TIMEOUT", async () => {
     const coverages = await Promise.all(FIXED_SEEDS.map(async seed => {
-      const { coverage } = await runWithConfig(seed, {}, { timeoutRate: 0.5, statusTimeoutRate: 0.5, permanentRejectRate: 0, transientRejectRate: 0 });
+      const { coverage } = await runWithConfig(
+        seed,
+        {},
+        { timeoutRate: 0.5, statusTimeoutRate: 0.5, permanentRejectRate: 0, transientRejectRate: 0 },
+        { suppressAsyncEvents: true },
+      );
       return coverage;
     }));
     expect(anySeedExercisesCell(coverages, "UNKNOWN:BANK_TIMEOUT")).toBe(true);
