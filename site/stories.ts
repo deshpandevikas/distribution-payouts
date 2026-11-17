@@ -61,7 +61,9 @@ function storyOptions(
 
 export type StoryExpectation =
   | { kind: "pass" }
-  | { kind: "catch"; invariant: string };
+  | { kind: "catch"; invariant: string }
+  /** Ends at MANUAL_REVIEW: not a bug and not a pass - a person decides. */
+  | { kind: "review" };
 
 export interface Story {
   /** URL id: ?story=<id>. */
@@ -137,6 +139,23 @@ export const STORIES: readonly Story[] = [
     }, "resendWithoutStatusCheck"),
     expects: { kind: "catch", invariant: "I1" },
   },
+  {
+    id: "bank-goes-quiet",
+    title: "Bank goes quiet",
+    whatShouldHappen:
+      "We never find out whether the money moved, so it goes to a human instead of a retry.",
+    // The send times out after the money moved, the bank's notification is
+    // lost, and every status question times out too. After the check budget is
+    // spent the payment stops: MANUAL_REVIEW is terminal by design, and no
+    // amount of retrying is allowed to guess.
+    options: storyOptions(10, {
+      timeoutRate: 0.5,
+      asyncConfirmRate: 1,
+      asyncDropRate: 1,
+      statusTimeoutRate: 1,
+    }),
+    expects: { kind: "review" },
+  },
 ];
 
 /** Looks up a story by its ?story= id. Unknown ids return undefined, never throw. */
@@ -150,7 +169,8 @@ export function storyById(id: string | null | undefined): Story | undefined {
 // ---------------------------------------------------------------------------
 
 export interface Verdict {
-  tone: "pass" | "catch";
+  /** pass = green, catch = red, review = amber (a human owns the money). */
+  tone: "pass" | "catch" | "review";
   headline: string;
 }
 
@@ -195,6 +215,19 @@ export function verdictFor(story: Story, outcome: ReplayOutcome): Verdict {
       headline:
         `Caught: ${overpaid.investorId} was paid ${times(overpaid.paidTimes)}` +
         ` (${centsToDisplay(extra)} extra).${planted}`,
+    };
+  }
+
+  // A payment nobody can resolve is not a pass and not a catch: the money may
+  // have moved, and the design says a person decides. Said before `missed`,
+  // because MANUAL_REVIEW is also "not CONFIRMED" and deserves its own tone.
+  const stuck = rows.find((row) => row.state === "MANUAL_REVIEW");
+  if (stuck) {
+    return {
+      tone: "review",
+      headline:
+        `Needs a human: ${stuck.investorId}'s ${centsToDisplay(stuck.amountCents)} is stuck,` +
+        " and the bank will not say whether it moved.",
     };
   }
 

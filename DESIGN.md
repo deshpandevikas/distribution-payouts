@@ -194,13 +194,16 @@ frozen constant, and a test fails if any tool name looks like a mutation.
 ## Browser replay (site/)
 
 `site/` bundles the real `src/core` and the real checker with Vite (root `site/`, `base: "./"`
-for the Pages subpath). The page takes a seed, investor count and total, plus bank failure
-rates, runs the distribution, and prints the outcome and any invariant violations. Every
-control is also a URL parameter (`?seed=42&flag=newKeyOnRetry`), so a failing run is a link
-someone can open.
+for the Pages subpath). It offers six stories rather than a form: each is a fixed seed plus bank
+settings tuned so the named failure really happens, and each says what should happen *before* it
+runs. Three end green (everyone paid once), two end red (a planted bug double-pays an investor
+and I1 catches it), and one ends amber at MANUAL_REVIEW - the bank stops answering, the money
+may have moved, and a person owns it. The Advanced section still exposes the seed, the bank
+knobs and the audit log, and every control is also a URL parameter (`?story=bank-goes-quiet`,
+`?seed=42&flag=newKeyOnRetry`), so a run is a link someone can open.
 
 The point of the page is honesty: it is the same code the tests run, so the bug you switch on
-is the bug the harness catches, and you can watch a green run turn red.
+is the bug the harness catches, and you can watch a green run turn red - or amber, and stop.
 
 ## What the harness proves
 
