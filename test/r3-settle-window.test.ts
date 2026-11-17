@@ -1,17 +1,17 @@
 /**
- * R3 regression tests: settle-window resend path is unreachable.
+ * R3 regression tests: the settle-window resend path must actually run.
  *
- * Before fix:
- *   - Clock has no sleep() - backoff and polling don't advance clock
- *   - settle window is 120,000ms but fake clock only advances 1ms per call
- *   - age is measured from createdAt, not lastSentAt
- *   - bank always returns CONFIRMED/FAILED on status (never NOT_FOUND for a sent key)
+ * C3 found two reasons it never did:
+ *   - the harness clock ignored the ms passed to sleep(), so time moved 1ms per
+ *     call and a 120_000ms window could never elapse;
+ *   - nothing in checkStatus() ever slept, so an UNKNOWN payment re-queried
+ *     status at the same instant until CHECKS_EXHAUSTED.
  *
- * After fix:
- *   - Clock interface has sleep(ms): fake clock advances, real clock awaits
- *   - Payment has lastSentAt field
- *   - settle window measured from lastSentAt
- *   - FakeBank has lagMode: returns NOT_FOUND for first K status checks before resolving
+ * "Ended in some terminal state" passes in the broken and the fixed world, so
+ * these tests assert the two grid cells and the resend itself:
+ *   UNKNOWN:STATUS_NOT_FOUND_IN_WINDOW  (wait), then
+ *   UNKNOWN:STATUS_NOT_FOUND            (window gone: back to SENDING), then
+ *   a second bank.send with the SAME idempotency key.
  */
 
 import { describe, it, expect } from "vitest";
@@ -19,7 +19,7 @@ import { Runner } from "../src/core/runner.js";
 import { MemoryStore } from "../src/store/memoryStore.js";
 import { FakeBank } from "../src/bank/fakeBank.js";
 import { allocate } from "../src/core/allocation.js";
-import type { Distribution, Clock } from "../src/core/types.js";
+import type { Distribution, Clock, IdempotencyKey } from "../src/core/types.js";
 
 function makeDist(id: string, totalCents: number): Distribution {
   const investor = { id: "inv-1", name: "Test", bankDetails: "routing:test" };
@@ -42,34 +42,42 @@ describe("R3: Clock has sleep()", () => {
   });
 });
 
-describe("R3: settle-window resend exercised", () => {
-  it("payment in UNKNOWN outside settle window resends (UNKNOWN->SENDING in audit)", async () => {
-    // Bank lag mode: status returns NOT_FOUND for first 2 checks, then CONFIRMED.
-    // settle window = 0 so we're immediately outside it.
-    // This forces UNKNOWN -> STATUS_NOT_FOUND -> SENDING -> BANK_ACCEPTED -> CONFIRMED.
+describe("R3: settle-window wait and resend are exercised", () => {
+  it("waits inside the window, then resends the same key once the window is gone", async () => {
+    // Bank never reveals status (lagChecks far above the check budget), so the
+    // payment cannot resolve by status: the only way out is wait -> resend.
     const bank = new FakeBank({ next: () => 0.5 }, {
       permanentRejectRate: 0,
       transientRejectRate: 0,
-      timeoutRate: 1,        // force timeout -> UNKNOWN
-      asyncConfirmRate: 0,   // async resolves as FAILED so status check drives recovery
+      timeoutRate: 1,        // first send times out -> UNKNOWN
+      asyncConfirmRate: 0,   // even if it surfaces, it is a failure
       statusTimeoutRate: 0,
-      lagChecks: 2,          // NOT_FOUND for first 2 status checks
+      lagChecks: 100,        // NOT_FOUND for every status check
     });
+
+    const sendKeys: IdempotencyKey[] = [];
+    const origSend = bank.send.bind(bank);
+    bank.send = async (key, amount, details) => {
+      sendKeys.push(key);
+      return origSend(key, amount, details);
+    };
 
     const store = new MemoryStore();
     let now = 0;
+    const sleeps: number[] = [];
+    // The clock the harness must use: sleep honours the requested duration.
     const clock: Clock = {
       now: () => now++,
-      sleep: async (_ms: number) => { now += 10; }, // advance clock on sleep
+      sleep: async (ms: number) => { sleeps.push(ms); now += ms; },
     };
 
     const runner = new Runner({
       store, bank, clock,
       rng: { next: () => 0 },
       config: {
-        settleWindowMs: 0,   // immediately outside window
-        maxStatusChecks: 10,
-        backoffBaseMs: 1,
+        settleWindowMs: 1_000,
+        maxStatusChecks: 4,
+        backoffBaseMs: 0,
       },
     });
 
@@ -77,46 +85,26 @@ describe("R3: settle-window resend exercised", () => {
     await runner.run(dist);
 
     const audit = store.listAudit("dist-r3");
+    const cells = audit.map(e => `${e.fromState}:${e.event}`);
 
-    // Before fix: UNKNOWN->SENDING never appears (settle window never expires)
-    // After fix: UNKNOWN->SENDING appears (outside window, resend triggered)
-    const resendTransition = audit.some(e =>
-      e.fromState === "UNKNOWN" && e.toState === "SENDING",
-    );
-    expect(resendTransition).toBe(true);
-  });
+    // 1. The payment waited inside the window.
+    expect(cells).toContain("UNKNOWN:STATUS_NOT_FOUND_IN_WINDOW");
 
-  it("settle window measured from lastSentAt, not createdAt", async () => {
-    // With createdAt-based window and a clock that advances slowly,
-    // a payment created at t=0 would appear inside the window even after many status checks.
-    // With lastSentAt-based window, the window resets on each send.
-    const bank = new FakeBank({ next: () => 0.5 }, {
-      permanentRejectRate: 0,
-      transientRejectRate: 0,
-      timeoutRate: 1,
-      asyncConfirmRate: 0,
-      statusTimeoutRate: 0,
-      lagChecks: 1,
-    });
+    // 2. Once the window was gone, NOT_FOUND moved UNKNOWN -> SENDING.
+    expect(cells).toContain("UNKNOWN:STATUS_NOT_FOUND");
+    expect(
+      audit.some(e => e.event === "STATUS_NOT_FOUND" && e.fromState === "UNKNOWN" && e.toState === "SENDING"),
+      "UNKNOWN -> SENDING on STATUS_NOT_FOUND must be audited",
+    ).toBe(true);
 
-    const store = new MemoryStore();
-    let now = 0;
-    const clock: Clock = {
-      now: () => now++,
-      sleep: async (_ms) => { now += 1; },
-    };
+    // 3. The wait was real: the runner asked the clock for time inside the window.
+    expect(sleeps.length).toBeGreaterThanOrEqual(1);
+    expect(sleeps[0]).toBeGreaterThan(0);
+    expect(now, "clock must advance past the settle window").toBeGreaterThanOrEqual(1_000);
 
-    const runner = new Runner({
-      store, bank, clock,
-      rng: { next: () => 0 },
-      config: { settleWindowMs: 5, maxStatusChecks: 10, backoffBaseMs: 0 },
-    });
-
-    const dist = makeDist("dist-r3b", 100);
-    await runner.run(dist);
-
-    // Should complete - the window expires relative to lastSentAt, triggering resend
-    const payments = store.listPayments("dist-r3b");
-    expect(["CONFIRMED", "FAILED", "MANUAL_REVIEW"]).toContain(payments[0]!.state);
+    // 4. The resend reused the idempotency key - no new key, no new payment.
+    expect(sendKeys.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(sendKeys).size, "every send must use the same idempotency key").toBe(1);
+    expect(store.listPayments("dist-r3")).toHaveLength(1);
   });
 });
