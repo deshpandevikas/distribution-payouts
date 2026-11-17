@@ -177,7 +177,9 @@ deterministic, that test fails.
 
 ## Read-only view (MCP)
 
-`src/mcp/` serves four tools over stdio, reading the same SQLite file the worker writes:
+`src/mcp/` serves four tools over stdio, reading the same SQLite file the worker writes. The
+handle is opened read-only (`readonly: true`, `fileMustExist: true`) with no schema creation,
+so the process cannot write even if a handler were buggy:
 
 | Tool | Answers |
 |---|---|

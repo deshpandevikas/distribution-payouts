@@ -11,7 +11,10 @@ import { SqliteStore } from "../store/sqliteStore.js";
 import { createReadOnlyServer } from "./server.js";
 
 const path = process.env.SQLITE_PATH ?? "payouts.db";
-const store = new SqliteStore(path);
+// Read-only and fileMustExist: this process must never create or migrate the
+// database, and a typo in SQLITE_PATH should fail loudly instead of serving an
+// empty one. Writes are impossible at the SQLite level, not just by convention.
+const store = SqliteStore.openReadOnly(path);
 const server = createReadOnlyServer(store);
 
 await server.connect(new StdioServerTransport());
