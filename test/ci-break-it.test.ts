@@ -1,23 +1,18 @@
 /**
- * C1: the CI break-it step must fail for every break-it flag.
+ * C1/C2: the CI break-it step must fail for every break-it flag, with a named
+ * invariant violation and exit code 1 - never a crash.
  *
  * ci.yml runs, once per flag:
  *
  *   npm run harness -- --scenarios=50 --break-it=$flag
  *
- * and treats any non-zero exit as "the flag broke an invariant".
- *
- * That stopped being true for overwriteConflictingConfirm. Its bug needs a
- * payment in FAILED/MANUAL_REVIEW at the moment an ASYNC_CONFIRM for the same
- * key is drained. Since retries now cancel the queued async event, the only
- * surviving route is three consecutive transient rejections with a lying one
- * on the last allowed attempt - roughly 5e-4 per payment. Across the 50 CI
- * scenarios (~500 payments) that is ~0.25 expected hits, so the harness saw
- * none and exited 0, and the phase's CI went red.
- *
- * These tests run the CI command itself: same entry point, same flag, same
- * scenario count, same implicit seeds (1..50). A flag that stops failing an
- * invariant fails here instead of only in CI.
+ * C1 fixed the case where a flag broke nothing and exited 0. C2 fixes the
+ * other half: the old step treated any non-zero exit as a catch, so a flag
+ * that died on an exception looked identical to a flag that violated an
+ * invariant. The harness now exits 1 only for a violation and 2 for any other
+ * error, and ci.yml accepts exit 1 only. These tests pin both halves down by
+ * running the CI command itself: same entry point, same flag, same scenario
+ * count, same implicit seeds (1..50).
  */
 
 import { execFile } from "node:child_process";
@@ -31,6 +26,20 @@ const CI_SCENARIOS = 50;
 
 /** Each run is a full 50-scenario harness pass; well under a few seconds. */
 const RUN_TIMEOUT_MS = 120_000;
+
+/**
+ * The invariant each flag is supposed to break. A flag "works" only if the
+ * checker names it - an exception or a non-zero exit proves nothing.
+ */
+const BREAK_IT_FLAGS = [
+  { flag: "skipIntentRecord", invariant: "I5" },
+  { flag: "timeoutAsFailure", invariant: "I5" },
+  { flag: "newKeyOnRetry", invariant: "I4" },
+  { flag: "overwriteConflictingConfirm", invariant: "I5" },
+  // A blind resend must move money twice and be caught by I1 (double
+  // settlement), not die on an illegal transition inside the runner.
+  { flag: "resendWithoutStatusCheck", invariant: "I1" },
+] as const;
 
 interface RunResult {
   /** Process exit code, or -1 if the process could not be started/killed. */
@@ -61,38 +70,36 @@ function runBreakItFlag(flag: string): Promise<RunResult> {
   });
 }
 
-describe("C1: CI break-it step fails an invariant for every flag", () => {
-  it("skipIntentRecord", async () => {
-    const { code, output } = await runBreakItFlag("skipIntentRecord");
-    expect(code, output.slice(0, 4000)).not.toBe(0);
-  }, RUN_TIMEOUT_MS);
+describe("C2: every break-it flag fails an invariant with exit 1", () => {
+  for (const { flag, invariant } of BREAK_IT_FLAGS) {
+    it(`${flag} exits 1 with VIOLATION: [${invariant}]`, async () => {
+      const { code, output } = await runBreakItFlag(flag);
+      const seen = output.slice(0, 4000);
 
-  it("timeoutAsFailure", async () => {
-    const { code, output } = await runBreakItFlag("timeoutAsFailure");
-    expect(code, output.slice(0, 4000)).not.toBe(0);
-  }, RUN_TIMEOUT_MS);
+      // 0 = the flag broke nothing (C1). 2 = the harness threw; a crash is not
+      // a catch (C2). Only 1 means the checker caught the bug.
+      expect(code, `${flag} must exit 1 (invariant violation), got ${code}\n${seen}`).toBe(1);
 
-  it("newKeyOnRetry", async () => {
-    const { code, output } = await runBreakItFlag("newKeyOnRetry");
-    expect(code, output.slice(0, 4000)).not.toBe(0);
-  }, RUN_TIMEOUT_MS);
+      expect(
+        output,
+        `${flag} must print "VIOLATION: [${invariant}]", not just exit non-zero`,
+      ).toContain(`VIOLATION: [${invariant}]`);
 
-  it("overwriteConflictingConfirm exits non-zero AND reports an invariant violation", async () => {
-    const { code, output } = await runBreakItFlag("overwriteConflictingConfirm");
-    expect(code, output.slice(0, 4000)).not.toBe(0);
-    // Non-zero alone is not enough: the overwrite branch writes CONFIRMED
-    // without an audit entry, so the run must surface an I5 violation rather
-    // than dying on an exception.
-    expect(output, "run must print an invariant violation, not just exit non-zero").toMatch(
-      /VIOLATION: \[I5\]/,
+      // An illegal transition is the runner crashing over its own bug, not the
+      // checker catching it.
+      expect(output, `${flag} must not fail by throwing IllegalTransitionError`).not.toContain(
+        "IllegalTransitionError",
+      );
+    }, RUN_TIMEOUT_MS);
+  }
+});
+
+describe("C2: a harness error is distinguishable from an invariant violation", () => {
+  it("unknown break-it flag exits 2 and reports no violation", async () => {
+    const { code, output } = await runBreakItFlag("notARealFlag");
+    expect(code, `unknown flag must exit 2, got ${code}\n${output.slice(0, 2000)}`).toBe(2);
+    expect(output, "a usage error must not look like an invariant violation").not.toContain(
+      "VIOLATION:",
     );
-  }, RUN_TIMEOUT_MS);
-
-  // resendWithoutStatusCheck currently exits non-zero by throwing
-  // IllegalTransitionError (0 violation lines). Distinguishing a violation from
-  // a crash in the CI step is C2's card, so this asserts non-zero only.
-  it("resendWithoutStatusCheck", async () => {
-    const { code, output } = await runBreakItFlag("resendWithoutStatusCheck");
-    expect(code, output.slice(0, 4000)).not.toBe(0);
   }, RUN_TIMEOUT_MS);
 });
