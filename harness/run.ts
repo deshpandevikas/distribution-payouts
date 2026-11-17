@@ -23,6 +23,7 @@
 import { Runner, CrashInjected } from "../src/core/runner.js";
 import { MemoryStore } from "../src/store/memoryStore.js";
 import { FakeBank } from "../src/bank/fakeBank.js";
+import type { FakeBankConfig } from "../src/bank/fakeBank.js";
 import { reconcile } from "../src/core/reconcile.js";
 import { generate, buildDistribution, rngFromSeed } from "./generate.js";
 import { check } from "./check.js";
@@ -91,6 +92,38 @@ function parseArgs(argv: string[]): {
 }
 
 // ---------------------------------------------------------------------------
+// Per-flag bank config
+// ---------------------------------------------------------------------------
+//
+// Some break-it bugs are only reachable under a specific bank failure pattern.
+// overwriteConflictingConfirm needs a payment sitting in FAILED when an
+// ASYNC_CONFIRM for its key is drained. Since a retry now cancels the queued
+// async event, the only surviving route is a lying transient on the *last*
+// allowed attempt: the runner retries-exhausts, the payment lands FAILED, and
+// the event stays queued. At the default rates that is ~5e-4 per payment, i.e.
+// ~0.25 expected hits across the 50 scenarios CI runs - so the flag looked
+// fixed when it was only rare. Tuning the bank the way
+// test/r6-break-it.test.ts does makes the same route routine.
+
+const BREAK_IT_BANK_CONFIG = {
+  overwriteConflictingConfirm: {
+    transientRejectRate: 0.5,
+    lyingTransientRate: 1,
+    permanentRejectRate: 0,
+    timeoutRate: 0,
+    statusTimeoutRate: 0,
+  },
+} satisfies Partial<Record<keyof RunnerConfig, Partial<FakeBankConfig>>>;
+
+function breakItBankConfig(breakIt: Partial<RunnerConfig>): Partial<FakeBankConfig> {
+  const overrides: Partial<FakeBankConfig> = {};
+  for (const flag of Object.keys(BREAK_IT_BANK_CONFIG) as Array<keyof typeof BREAK_IT_BANK_CONFIG>) {
+    if (breakIt[flag] === true) Object.assign(overrides, BREAK_IT_BANK_CONFIG[flag]);
+  }
+  return overrides;
+}
+
+// ---------------------------------------------------------------------------
 // Single scenario run
 // ---------------------------------------------------------------------------
 
@@ -98,7 +131,7 @@ async function runScenario(seed: number, opts: ReturnType<typeof parseArgs>) {
   let scenario = generate(seed, {
     bankConfig: {
       ...(opts.noStatusQuery ? { statusQueryEnabled: false } : {}),
-      ...(opts.breakIt.overwriteConflictingConfirm ? { lyingTransientRate: 0.5 } : {}),
+      ...breakItBankConfig(opts.breakIt),
     },
     runnerConfig: opts.breakIt,
     ...(opts.crashAt !== undefined ? { crashAt: opts.crashAt } : {}),
