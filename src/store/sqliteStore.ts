@@ -171,14 +171,32 @@ export class SqliteStore implements Store {
   private readonly selectAlertsByDistStmt: Stmt;
   private readonly writeTransition: (payment: Payment, entry: AuditEntry) => void;
 
-  constructor(file: string) {
-    this.db = new Database(file);
+  /**
+   * Open an existing database read-only: the MCP server's path (G2).
+   *
+   * `fileMustExist` is deliberate. Creating an empty file on a typo would answer
+   * every operator question with "no payments", which looks exactly like a
+   * distribution that never ran. Writes fail with SQLITE_READONLY at the
+   * database, so a buggy caller cannot quietly turn this handle into a writer.
+   */
+  static openReadOnly(file: string): SqliteStore {
+    return new SqliteStore(file, { readonly: true });
+  }
 
-    // WAL survives an abrupt kill; FULL makes the commit durable before we
-    // proceed to the bank call. Both are required by the F2 crash test.
-    this.db.pragma("journal_mode = WAL");
-    this.db.pragma("synchronous = FULL");
-    this.db.exec(SCHEMA);
+  constructor(file: string, options: { readonly?: boolean } = {}) {
+    if (options.readonly === true) {
+      // No pragmas and no schema: both are writes, and this handle must not
+      // create or migrate anything.
+      this.db = new Database(file, { readonly: true, fileMustExist: true });
+    } else {
+      this.db = new Database(file);
+
+      // WAL survives an abrupt kill; FULL makes the commit durable before we
+      // proceed to the bank call. Both are required by the F2 crash test.
+      this.db.pragma("journal_mode = WAL");
+      this.db.pragma("synchronous = FULL");
+      this.db.exec(SCHEMA);
+    }
 
     this.upsertPaymentStmt = this.prepare(`
       INSERT INTO payments (
