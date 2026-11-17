@@ -166,3 +166,60 @@ describe("read-only MCP server", () => {
     expect(text).toContain("key-missing");
   });
 });
+
+describe("read-only database handle", () => {
+  const entry = {
+    paymentId: "pay-ro",
+    distributionId: DIST,
+    investorId: "inv-ro",
+    event: "BANK_ACCEPTED" as const,
+    fromState: "SENDING" as const,
+    toState: "CONFIRMED" as const,
+    timestamp: 9,
+  };
+
+  it("opens an existing file read-only and refuses every write", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dp-mcp-ro-"));
+    const file = join(dir, "payouts.db");
+
+    const writer = new SqliteStore(file);
+    writer.savePayment(payment({ id: "pay-ro", investorId: "inv-ro", state: "CONFIRMED" }));
+    writer.close();
+
+    const ro = SqliteStore.openReadOnly(file);
+    try {
+      // Reads see what the runner wrote.
+      expect(ro.getPayment("pay-ro")?.state).toBe("CONFIRMED");
+      expect(ro.listPayments(DIST)).toHaveLength(1);
+      expect(ro.listAudit(DIST)).toEqual([]);
+
+      // Writes fail at the database, not silently in a copy of the data.
+      expect(() => ro.savePayment(payment({ id: "pay-new", investorId: "inv-new" }))).toThrow(/readonly/i);
+      expect(() => ro.appendAudit(entry)).toThrow(/readonly/i);
+      expect(() => ro.appendAlert({
+        kind: "ALLOCATION_SKIPPED",
+        distributionId: DIST,
+        investorId: "inv-ro",
+        detail: "zero-cent allocation",
+        timestamp: 10,
+      })).toThrow(/readonly/i);
+      expect(() => ro.transition(
+        payment({ id: "pay-ro", investorId: "inv-ro", state: "FAILED" }),
+        entry,
+      )).toThrow(/readonly/i);
+    } finally {
+      ro.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to create a database file that does not exist", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dp-mcp-ro-"));
+    try {
+      expect(() => SqliteStore.openReadOnly(join(dir, "missing.db")))
+        .toThrow(/unable to open|does not exist/i);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
