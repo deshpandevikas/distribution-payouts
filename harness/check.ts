@@ -63,7 +63,14 @@ const LEGAL_TRANSITIONS: ReadonlySet<TransitionKey> = new Set<TransitionKey>([
   "SENDING->FAILED",          // BANK_REJECTED_PERMANENT, TRANSIENT_RETRIES_EXHAUSTED
   "SENDING->SENDING",         // BANK_REJECTED_TRANSIENT (stay, retry same key)
   "SENDING->UNKNOWN",         // BANK_TIMEOUT
-  "SENDING->MANUAL_REVIEW",   // ASYNC_CONFIRM/ASYNC_FAILURE MR!
+  // SENDING->MANUAL_REVIEW is an escape hatch for a CONFLICTING bank event only - e.g. a
+  // confirm whose amount or account does not match what we sent. A normal confirm in SENDING
+  // goes to CONFIRMED (BANK_ACCEPTED / STATUS_CONFIRMED / ASYNC_CONFIRM) and a normal failure
+  // to FAILED. No transition-table cell produces this pair today: nothing compares the bank's
+  // echo of amount or account during send, so the edge is legal-but-unreachable until that
+  // check exists. Verified 2026-11-17 by driving all 14 event types into SENDING: 0 reached
+  // MANUAL_REVIEW. Do not remove the pair - it is the shape the conflict check will need.
+  "SENDING->MANUAL_REVIEW",
   // UNKNOWN outcomes
   "UNKNOWN->CONFIRMED",       // STATUS_CONFIRMED, ASYNC_CONFIRM
   "UNKNOWN->FAILED",          // STATUS_FAILED, ASYNC_FAILURE
