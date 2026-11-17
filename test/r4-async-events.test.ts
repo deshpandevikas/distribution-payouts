@@ -114,7 +114,7 @@ describe("R4c: async events drained mid-run at seeded random points", () => {
 });
 
 describe("R4d: unknown-key async event alerts instead of silent drop", () => {
-  it("ASYNC_CONFIRM for a key the runner never sent triggers MANUAL_REVIEW", async () => {
+  it("ASYNC_CONFIRM for a key the runner never sent records an alert for the distribution", async () => {
     // Manually inject an async event for an unknown key
     const bank = new FakeBank({ next: () => 0.5 }, {
       permanentRejectRate: 0,
@@ -138,18 +138,18 @@ describe("R4d: unknown-key async event alerts instead of silent drop", () => {
     const dist = makeDist("dist-r4d", 100);
     await runner.run(dist);
 
-    // Before fix: ghost event silently dropped
-    // After fix: ghost event logged as an alert in the audit (under "unknown" distributionId)
-    // Search across all audit entries since the ghost key has no real distribution.
-    const allPayments = store.listPayments("dist-r4d");
-    // The alert is written to the store audit - check via a direct scan
-    // by looking at audit for any distribution including the synthetic one.
-    const auditDist = store.listAudit("dist-r4d");
-    const auditUnknown = store.listAudit("unknown");
-    const allAudit = [...auditDist, ...auditUnknown];
-    const ghostAlert = allAudit.find(e =>
-      e.reason?.includes("ghost-key") || e.reason?.includes("unknown key"),
-    );
-    expect(ghostAlert).toBeDefined();
+    // Before fix: ghost event silently dropped.
+    // C4: recorded as an alert keyed to the real distribution, not as a
+    // fabricated CREATED -> MANUAL_REVIEW audit row for a payment that does not
+    // exist - such a row was invisible from listAudit("dist-r4d"), which is the
+    // only query an operator makes.
+    const alerts = store.listAlerts("dist-r4d");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]!.kind).toBe("BANK_EVENT_FOR_UNKNOWN_KEY");
+    expect(alerts[0]!.detail).toContain("ghost-key");
+
+    const audit = store.listAudit("dist-r4d");
+    expect(audit.filter(e => e.toState === "MANUAL_REVIEW")).toHaveLength(0);
+    expect(audit.filter(e => e.paymentId.startsWith("unknown:"))).toHaveLength(0);
   });
 });

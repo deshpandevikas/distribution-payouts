@@ -32,6 +32,7 @@ import type {
   PaymentId,
   PaymentEvent,
   Distribution,
+  DistributionId,
   Store,
   Bank,
   Clock,
@@ -111,12 +112,21 @@ export class Runner {
       let payment = this.store.getPaymentByKey(key);
 
       if (!payment) {
-        // Zero-cent allocations: log outside audit and skip per agreed-decisions.md #13.
+        // Zero-cent allocations: no payment, but recorded per agreed-decisions.md #13.
+        // A console.log is not a record - put it in the alerts list where an
+        // operator querying the distribution can see it (C5).
         if (allocation.amountCents === 0) {
-          console.log(
-            `[SKIP] zero-cent allocation for investor ${allocation.investor.id}` +
-            ` in distribution ${distribution.id} - no payment created`,
-          );
+          const detail =
+            `zero-cent allocation for investor ${allocation.investor.id}` +
+            ` in distribution ${distribution.id} - no payment created`;
+          this.store.appendAlert({
+            kind: "ALLOCATION_SKIPPED",
+            distributionId: distribution.id,
+            investorId: allocation.investor.id,
+            detail,
+            timestamp: this.clock.now(),
+          });
+          console.log(`[SKIP] ${detail}`);
           continue;
         }
 
@@ -160,11 +170,11 @@ export class Runner {
         await this.processPayment(payment, recoveredIds.has(id));
       }
       // Drain async events mid-run after each payment completes.
-      await this.deliverAsyncEvents(paymentIds);
+      await this.deliverAsyncEvents(distribution.id, paymentIds);
     }
 
     // Final drain for any events that arrived after the last payment.
-    await this.deliverAsyncEvents(paymentIds);
+    await this.deliverAsyncEvents(distribution.id, paymentIds);
 
     return this.buildResult(distribution.id, distribution.allocations.reduce(
       (s, a) => s + a.amountCents, 0,
@@ -392,7 +402,10 @@ export class Runner {
    *   (audit toState != store state) and I4 (our confirmed set diverges from
    *   what the state machine recorded).
    */
-  private async deliverAsyncEvents(paymentIds: PaymentId[]): Promise<void> {
+  private async deliverAsyncEvents(
+    distributionId: DistributionId,
+    paymentIds: PaymentId[],
+  ): Promise<void> {
     if (!this.bank.drainAsyncEvents) return;
     const events = this.bank.drainAsyncEvents();
     if (events.length === 0) return;
@@ -407,15 +420,17 @@ export class Runner {
     for (const ev of events) {
       const id = keyToId.get(ev.key);
       if (!id) {
-        // Bank reports a payment we never sent - log an alert audit entry.
-        this.store.appendAudit({
-          paymentId: `unknown:${ev.key}`,
-          distributionId: "unknown",
-          investorId: "unknown",
+        // Bank reports a payment we never sent. There is no payment to attach a
+        // state change to, so this is an alert keyed to the distribution - a
+        // fabricated CREATED -> MANUAL_REVIEW audit row under
+        // distributionId "unknown" was invisible to the operator (C4).
+        this.store.appendAlert({
+          kind: "BANK_EVENT_FOR_UNKNOWN_KEY",
+          distributionId,
           event: ev.type,
-          fromState: "CREATED",
-          toState: "MANUAL_REVIEW",
-          reason: `unknown key ${ev.key} - bank event for payment not in this distribution`,
+          detail:
+            `bank event ${ev.type} for key ${ev.key}` +
+            ` - no payment for this key in distribution ${distributionId}`,
           timestamp: this.clock.now(),
         });
         console.error(`[ALERT] async event ${ev.type} for unknown key ${ev.key}`);

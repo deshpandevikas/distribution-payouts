@@ -15,12 +15,14 @@ import type {
   IdempotencyKey,
   DistributionId,
   AuditEntry,
+  AlertRecord,
 } from "../core/types.js";
 
 export class MemoryStore implements Store {
   private readonly payments = new Map<PaymentId, Payment>();
   private readonly keyIndex = new Map<IdempotencyKey, PaymentId>();
   private readonly auditLog: AuditEntry[] = [];
+  private readonly alerts: AlertRecord[] = [];
 
   // -------------------------------------------------------------------------
   // Payment writes
@@ -68,6 +70,20 @@ export class MemoryStore implements Store {
     return this.auditLog
       .filter((e) => e.distributionId === distributionId)
       .map((e) => ({ ...e }));
+  }
+
+  // -------------------------------------------------------------------------
+  // Alerts - append-only, not payment state changes
+  // -------------------------------------------------------------------------
+
+  appendAlert(record: AlertRecord): void {
+    this.alerts.push({ ...record });
+  }
+
+  listAlerts(distributionId: DistributionId): AlertRecord[] {
+    return this.alerts
+      .filter((a) => a.distributionId === distributionId)
+      .map((a) => ({ ...a }));
   }
 
   transition(payment: Payment, entry: AuditEntry): void {
