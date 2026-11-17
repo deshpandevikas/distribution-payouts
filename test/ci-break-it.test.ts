@@ -33,7 +33,7 @@ const RUN_TIMEOUT_MS = 120_000;
  */
 const BREAK_IT_FLAGS = [
   { flag: "skipIntentRecord", invariant: "I5" },
-  { flag: "timeoutAsFailure", invariant: "I5" },
+  { flag: "timeoutAsFailure", invariant: "I4" },
   { flag: "newKeyOnRetry", invariant: "I4" },
   { flag: "overwriteConflictingConfirm", invariant: "I5" },
   // A blind resend must move money twice and be caught by I1 (double
@@ -70,6 +70,10 @@ function runBreakItFlag(flag: string): Promise<RunResult> {
   });
 }
 
+// F1: timeoutAsFailure's expected invariant moved from I5 to I4. The I5 it used
+// to print was the checker's false positive on the FAILED->MANUAL_REVIEW and
+// CONFIRMED->MANUAL_REVIEW cells (both documented MR cells). What this bug really
+// violates is I4: the bank settled while we recorded FAILED.
 describe("C2: every break-it flag fails an invariant with exit 1", () => {
   for (const { flag, invariant } of BREAK_IT_FLAGS) {
     it(`${flag} exits 1 with VIOLATION: [${invariant}]`, async () => {

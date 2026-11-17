@@ -70,6 +70,15 @@ const LEGAL_TRANSITIONS: ReadonlySet<TransitionKey> = new Set<TransitionKey>([
   "UNKNOWN->UNKNOWN",         // BANK_TIMEOUT (status timed out), STATUS_NOT_FOUND_IN_WINDOW
   "UNKNOWN->SENDING",         // STATUS_NOT_FOUND outside window (resend)
   "UNKNOWN->MANUAL_REVIEW",   // CHECKS_EXHAUSTED
+  // Contradictions routed to a human (MR cells in docs/transitions.md). A bank
+  // telling us two incompatible things is not an illegal transition - it is the
+  // case the design escalates. These were missing from this hand-copied grid
+  // because no scenario ever exercised them until F1 made lost/late
+  // notifications routine:
+  //   CONFIRMED:STATUS_FAILED, CONFIRMED:STATUS_NOT_FOUND, CONFIRMED:ASYNC_FAILURE
+  //   FAILED:STATUS_CONFIRMED, FAILED:ASYNC_CONFIRM
+  "CONFIRMED->MANUAL_REVIEW",
+  "FAILED->MANUAL_REVIEW",
   // Terminal noop transitions (RECOVERY_ON_RESTART, duplicate events)
   "CONFIRMED->CONFIRMED",
   "FAILED->FAILED",

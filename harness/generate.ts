@@ -113,6 +113,39 @@ export function generate(seed: number, opts: GenerateOptions = {}): Scenario {
     bankConfig.lagChecks = seed % 7 === 0 ? 2 : 0;
   }
 
+  // F1: a notification is not guaranteed either. Vary the bank by seed so the
+  // default sweep covers the paths that only exist when it is lost or late -
+  // above all a status query actually issued from UNKNOWN.
+  if (opts.bankConfig?.asyncDropRate === undefined && opts.bankConfig?.asyncDelayChecks === undefined) {
+    switch (seed % 6) {
+      case 1:
+        // Webhook lost; the money still moved, so only a query finds out.
+        bankConfig.asyncDropRate = 0.35;
+        break;
+      case 2:
+        // Bank knows but tells us late: queries happen first.
+        bankConfig.asyncDelayChecks = 1 + (seed % 3);
+        break;
+      case 3:
+        // Late notification plus a flaky status endpoint: a query from UNKNOWN
+        // can time out, which is UNKNOWN:BANK_TIMEOUT.
+        bankConfig.asyncDelayChecks = 2;
+        bankConfig.statusTimeoutRate = 0.4;
+        break;
+      case 4:
+        // Lying transient on the last allowed attempt: retries exhaust to
+        // FAILED while the confirmation is still in flight, -> FAILED:ASYNC_CONFIRM.
+        bankConfig.transientRejectRate = 0.5;
+        bankConfig.lyingTransientRate = 0.9;
+        break;
+      case 5:
+        // More payments reach UNKNOWN at all, with slow notifications.
+        bankConfig.timeoutRate = 0.4;
+        bankConfig.asyncDelayChecks = 3;
+        break;
+    }
+  }
+
   const runnerConfig: RunnerConfig = {
     ...DEFAULT_RUNNER_CONFIG,
     // Use the real settle window (DEFAULT_RUNNER_CONFIG): a zero window meant
