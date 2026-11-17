@@ -24,7 +24,6 @@
  * No Date.now() or Math.random() here.
  */
 
-import { createHash } from "node:crypto";
 import { assertCents } from "./money.js";
 import { applyEvent, IllegalTransitionError } from "./stateMachine.js";
 import type {
@@ -567,9 +566,16 @@ export function buildIdempotencyKey(
   instructionNo: number,
   retryNo = 0,
 ): IdempotencyKey {
-  // retryNo is only non-zero when newKeyOnRetry break-it flag is active.
-  const input = `${distributionId}:${investorId}:${instructionNo}:${retryNo}`;
-  return createHash("sha256").update(input).digest("hex").slice(0, 32);
+  // Readable on purpose (Q4): a key that appears in a bank statement, an audit
+  // row and an operator's message should say what it pays for. No hashing, so
+  // src/core stays free of node:crypto and can run in the browser (F4).
+  //
+  // Deterministic: same distribution + investor + instruction always gives the
+  // same key, which is what makes a resend after a restart a no-op at the bank.
+  // retryNo is only non-zero while the newKeyOnRetry break-it flag is active,
+  // and it is marked so a bug key can never be mistaken for a real one.
+  const base = `${distributionId}:${investorId}:${instructionNo}`;
+  return retryNo === 0 ? base : `${base}:retry-${retryNo}`;
 }
 
 export function buildPaymentId(distributionId: string, investorId: string): PaymentId {
