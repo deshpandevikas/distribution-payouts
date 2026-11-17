@@ -7,7 +7,7 @@
  * and the raw knobs and audit log under Advanced.
  */
 
-import { BREAK_IT_FLAGS, replay } from "./replay.js";
+import { BREAK_IT_FLAGS, dollarsToCents, replay } from "./replay.js";
 import type { BreakItFlag, ReplayOptions, ReplayOutcome } from "./replay.js";
 import { STORIES, paymentRows, storyById, verdictFor } from "./stories.js";
 import type { Story, Verdict } from "./stories.js";
@@ -22,7 +22,11 @@ interface Controls {
   flag: BreakItFlag | "";
 }
 
-/** Inputs that make a URL a set of custom settings rather than a story link. */
+/**
+ * Inputs that make a URL a set of custom settings rather than a story link.
+ * Note `total`: the box takes dollars, the URL keeps cents, so a ?total= link
+ * written before the box changed still loads the same distribution.
+ */
 const ADVANCED_FIELDS = [
   "seed",
   "investors",
@@ -215,11 +219,16 @@ async function playStory(story: Story): Promise<void> {
 // Advanced: custom settings
 // ---------------------------------------------------------------------------
 
+function readTotalCents(): number {
+  const dollars = num("total");
+  return Math.max(1, Number.isFinite(dollars) ? dollarsToCents(dollars) : 0);
+}
+
 function readControls(): Controls {
   return {
     seed: Math.max(1, Math.floor(num("seed"))),
     investors: Math.min(40, Math.max(1, Math.floor(num("investors")))),
-    totalCents: Math.max(1, Math.floor(num("total"))),
+    totalCents: readTotalCents(),
     flag: ($("flag") as HTMLSelectElement).value as BreakItFlag | "",
     bank: {
       permanentRejectRate: 0,
@@ -259,8 +268,14 @@ function customStory(controls: Controls): Story {
 function applyUrlParams(): void {
   const params = new URLSearchParams(location.search);
   for (const id of ADVANCED_FIELDS) {
+    if (id === "total") continue; // cents in the link, dollars in the box
     const value = params.get(id);
     if (value !== null) input(id).value = value;
+  }
+
+  const totalCents = params.get("total");
+  if (totalCents !== null && Number.isFinite(Number(totalCents))) {
+    input("total").value = (Number(totalCents) / 100).toFixed(2);
   }
   const flag = params.get("flag");
   if (flag !== null && (BREAK_IT_FLAGS as readonly string[]).includes(flag)) {

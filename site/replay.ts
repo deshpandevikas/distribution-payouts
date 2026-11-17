@@ -72,6 +72,17 @@ export interface ReplayOutcome {
   settlements: SettlementRow[];
 }
 
+/**
+ * Dollars typed by a person ("600.00") to the integer cents the runner, the
+ * allocator and the checker all work in.
+ *
+ * Rounds once, here at the boundary, so a floating-point product never reaches
+ * the runner: 0.1 + 0.2 dollars is 30 cents, not 30.000000000000004.
+ */
+export function dollarsToCents(dollars: number): number {
+  return Math.round(dollars * 100);
+}
+
 export function buildDistribution(options: ReplayOptions): Distribution {
   const rng = makeSeededRng(options.seed);
   const inputs = Array.from({ length: options.investors }, (_, index) => {

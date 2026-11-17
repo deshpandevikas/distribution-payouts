@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { replay } from "../site/replay.js";
+import { dollarsToCents, replay } from "../site/replay.js";
 import type { ReplayOutcome } from "../site/replay.js";
 import { STORIES, storyById, verdictFor, paymentRows } from "../site/stories.js";
 import type { Story } from "../site/stories.js";
@@ -177,6 +177,16 @@ describe("H1: payments table in plain English", () => {
     expect(skipped!.amountCents).toBe(0);
     expect(skipped!.state).toBe("SKIPPED");
     expect(skipped!.whatHappened).toBe("share rounded to $0.00, nothing sent");
+  });
+
+  it("takes dollars in the Advanced box and converts to integer cents once", () => {
+    expect(dollarsToCents(600)).toBe(60_000);
+    expect(dollarsToCents(600.5)).toBe(60_050);
+    expect(dollarsToCents(123.45)).toBe(12_345);
+    expect(dollarsToCents(0.07)).toBe(7);
+    // The reason the rounding lives at the boundary: 0.1 + 0.2 dollars is not
+    // exactly 0.3 in binary, and cents must stay integers.
+    expect(dollarsToCents(0.1 + 0.2)).toBe(30);
   });
 
   it("shows money in dollars, never raw cents", async () => {
