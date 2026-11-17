@@ -8,13 +8,15 @@ on:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: that label is mid-migration to 26.04
+    # (2026-10-19 to 2026-11-19), so the OS would change under the build.
+    runs-on: ubuntu-26.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm

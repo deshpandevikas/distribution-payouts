@@ -304,8 +304,9 @@ export interface Store {
   listAlerts(distributionId: DistributionId): AlertRecord[];
   /**
    * Atomically write a payment state change and its audit entry.
-   * In MemoryStore this is synchronous and trivially atomic.
-   * In SQLite (Phase 5) this becomes a single transaction.
+   * In MemoryStore this is synchronous and trivially atomic. In SqliteStore it is
+   * a single SQLite transaction, so the payment row and its audit row commit
+   * together or not at all.
    */
   transition(payment: Payment, entry: AuditEntry): void;
 }
