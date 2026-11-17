@@ -241,6 +241,22 @@ describe.each(IMPLEMENTATIONS)("Store contract: $name", ({ create }) => {
     expect(h.store.getPaymentByKey("key-dup")?.id).toBe("pay-k1");
   });
 
+  it("leaves no audit row when the payment write is rejected", () => {
+    h.store.savePayment(payment({ id: "pay-keep", investorId: "inv-keep", idempotencyKey: "key-keep" }));
+
+    // A transition whose payment violates UNIQUE (distribution_id, investor_id):
+    // different id, same investor. The audit row must not survive the failure.
+    expect(() =>
+      h.store.transition(
+        payment({ id: "pay-other", investorId: "inv-keep", idempotencyKey: "key-other", state: "SENDING" }),
+        auditEntry({ paymentId: "pay-other", investorId: "inv-keep", timestamp: 7 }),
+      ),
+    ).toThrow();
+
+    expect(h.store.listAudit("dist-1")).toEqual([]);
+    expect(h.store.listPayments("dist-1").map((p) => p.id)).toEqual(["pay-keep"]);
+  });
+
   it("updates an existing payment in place without duplicating it", () => {
     h.store.savePayment(payment({ id: "pay-up", idempotencyKey: "key-up" }));
     h.store.savePayment(payment({ id: "pay-up", idempotencyKey: "key-up", state: "SENDING", statusChecks: 2 }));

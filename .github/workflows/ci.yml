@@ -22,6 +22,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: better-sqlite3 loads a Node 26 prebuild (no source compile)
+        run: |
+          # F2/Q2 rule: use the prebuild, or fall back to node:sqlite. A source
+          # build would pass here too (the runner has gcc), so the assertion is
+          # on the install log: no gyp means a downloaded binary was used.
+          probe=$(mktemp -d)
+          cd "$probe"
+          npm init -y > /dev/null
+          npm install better-sqlite3@13.2.0 --no-audit --no-fund > install.log 2>&1
+          if grep -qE "node-gyp|gyp info" install.log; then
+            echo "::error::better-sqlite3 compiled from source - no prebuild for this Node"
+            cat install.log
+            exit 1
+          fi
+          node -e "const D=require('better-sqlite3');const db=new D(':memory:');db.exec('create table t(a)');db.prepare('insert into t values (1)').run();const c=db.prepare('select count(*) c from t').get().c;if(c!==1)process.exit(1);console.log('prebuilt binary loaded, sqlite',db.prepare('select sqlite_version() v').get().v)"
+
       - name: Type check
         run: npm run typecheck
 
@@ -30,6 +46,9 @@ jobs:
 
       - name: Harness fixed seeds
         run: npm run harness -- --seeds=1,2,3,42,100,999,1234,5678,9999,10000
+
+      - name: Harness on the SQLite store
+        run: npm run harness -- --scenarios=200 --store=sqlite
 
       - name: Break-it flags each fail an invariant
         run: |

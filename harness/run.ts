@@ -13,6 +13,7 @@
  *                      Flags: skipIntentRecord | timeoutAsFailure | newKeyOnRetry |
  *                             overwriteConflictingConfirm | resendWithoutStatusCheck
  *   --no-status-query  Disable bank status query for all runs
+ *   --store=sqlite     Use SqliteStore (one temp database file per seed)
  *   --crash-at=POINT   Inject crash at: afterIntentRecorded |
  *                                       afterBankCallBeforeRecord |
  *                                       duringStatusCheck
@@ -27,6 +28,10 @@
 
 import { Runner, CrashInjected } from "../src/core/runner.js";
 import { MemoryStore } from "../src/store/memoryStore.js";
+import { SqliteStore } from "../src/store/sqliteStore.js";
+import { mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { FakeBank } from "../src/bank/fakeBank.js";
 import type { FakeBankConfig } from "../src/bank/fakeBank.js";
 import { reconcile } from "../src/core/reconcile.js";
@@ -42,12 +47,14 @@ import {
   printGridCoverage,
   type GridCoverage,
 } from "./metrics.js";
-import type { RunnerConfig } from "../src/core/types.js";
+import type { RunnerConfig, Store } from "../src/core/types.js";
 import type { CrashPoint } from "../src/core/runner.js";
 
 // ---------------------------------------------------------------------------
 // Arg parsing
 // ---------------------------------------------------------------------------
+
+type HarnessStore = "memory" | "sqlite";
 
 function parseArgs(argv: string[]): {
   scenarios: number;
@@ -56,6 +63,7 @@ function parseArgs(argv: string[]): {
   breakIt: Partial<RunnerConfig>;
   noStatusQuery: boolean;
   crashAt: CrashPoint | undefined;
+  store: HarnessStore;
 } {
   const args = argv.slice(2);
   let scenarios = 2000;
@@ -64,6 +72,7 @@ function parseArgs(argv: string[]): {
   const breakIt: Partial<RunnerConfig> = {};
   let noStatusQuery = false;
   let crashAt: CrashPoint | undefined;
+  let store: HarnessStore = "memory";
 
   for (const arg of args) {
     if (arg.startsWith("--scenarios=")) {
@@ -76,6 +85,14 @@ function parseArgs(argv: string[]): {
       verbose = true;
     } else if (arg === "--no-status-query") {
       noStatusQuery = true;
+    } else if (arg.startsWith("--store=")) {
+      const value = arg.slice("--store=".length);
+      if (value !== "memory" && value !== "sqlite") {
+        // Usage error, not an invariant violation: exit 2 like an unknown flag.
+        console.error(`Unknown store: ${value} (expected memory or sqlite)`);
+        process.exit(2);
+      }
+      store = value;
     } else if (arg.startsWith("--break-it=")) {
       const flag = arg.slice("--break-it=".length);
       switch (flag) {
@@ -95,7 +112,7 @@ function parseArgs(argv: string[]): {
     }
   }
 
-  return { scenarios, seeds, verbose, breakIt, noStatusQuery, crashAt };
+  return { scenarios, seeds, verbose, breakIt, noStatusQuery, crashAt, store };
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +163,33 @@ function breakItBankConfig(breakIt: Partial<RunnerConfig>): Partial<FakeBankConf
 }
 
 // ---------------------------------------------------------------------------
+// Store selection
+// ---------------------------------------------------------------------------
+
+/**
+ * SQLite runs get one database file per seed in the OS temp dir, deleted after
+ * the scenario has been checked. One shared file across 2000 scenarios would
+ * grow a 2000-distribution database and make every run an append; a per-seed
+ * file also keeps a failing scenario's database around if the delete is skipped.
+ */
+function openStore(kind: HarnessStore, seed: number): { store: Store; close: () => void } {
+  if (kind === "memory") {
+    return { store: new MemoryStore(), close: () => {} };
+  }
+  const dir = join(tmpdir(), "dp-harness");
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, `seed-${seed}-${process.pid}.db`);
+  const store = new SqliteStore(file);
+  return {
+    store,
+    close: () => {
+      store.close();
+      for (const suffix of ["", "-wal", "-shm"]) rmSync(`${file}${suffix}`, { force: true });
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Single scenario run
 // ---------------------------------------------------------------------------
 
@@ -160,7 +204,8 @@ async function runScenario(seed: number, opts: ReturnType<typeof parseArgs>) {
   });
   scenario = await buildDistribution(scenario);
 
-  const store = new MemoryStore();
+  const opened = openStore(opts.store, seed);
+  const store = opened.store;
   const bankRng = rngFromSeed(seed + 1); // separate RNG stream for bank
   const bank = new FakeBank(bankRng, scenario.bankConfig);
 
@@ -212,10 +257,12 @@ async function runScenario(seed: number, opts: ReturnType<typeof parseArgs>) {
     totalAllocatedCents: scenario.distribution.allocations.reduce((s, a) => s + a.amountCents, 0),
   });
 
-  return {
+  const result = {
     runMetrics: collectRunMetrics(seed, scenario.distribution.id, store, checkResult),
     coverage: collectGridCoverage(scenario.distribution.id, store),
   };
+  opened.close();
+  return result;
 }
 
 async function main() {
@@ -231,6 +278,7 @@ async function main() {
     console.log(`Break-it flags: ${JSON.stringify(opts.breakIt)}`);
   }
   if (opts.noStatusQuery) console.log("Bank status query: OFF");
+  if (opts.store !== "memory") console.log(`Store: ${opts.store}`);
   if (opts.crashAt) console.log(`Crash injection: ${opts.crashAt}`);
 
   const allMetrics = [];

@@ -21,6 +21,8 @@ import type {
 export class MemoryStore implements Store {
   private readonly payments = new Map<PaymentId, Payment>();
   private readonly keyIndex = new Map<IdempotencyKey, PaymentId>();
+  /** (distributionId, investorId) -> paymentId, mirroring the SQLite unique constraint. */
+  private readonly investorIndex = new Map<string, PaymentId>();
   private readonly auditLog: AuditEntry[] = [];
   private readonly alerts: AlertRecord[] = [];
 
@@ -29,8 +31,26 @@ export class MemoryStore implements Store {
   // -------------------------------------------------------------------------
 
   savePayment(payment: Payment): void {
+    // Same two rules the SQLite schema enforces, so the contract suite means the
+    // same thing for both stores. An update writes the same id, which is allowed.
+    const keyOwner = this.keyIndex.get(payment.idempotencyKey);
+    if (keyOwner !== undefined && keyOwner !== payment.id) {
+      throw new Error(
+        `duplicate idempotency key ${payment.idempotencyKey}: already used by payment ${keyOwner}`,
+      );
+    }
+
+    const pair = `${payment.distributionId}\u0000${payment.investorId}`;
+    const pairOwner = this.investorIndex.get(pair);
+    if (pairOwner !== undefined && pairOwner !== payment.id) {
+      throw new Error(
+        `duplicate payment for distribution ${payment.distributionId} investor ${payment.investorId}: already ${pairOwner}`,
+      );
+    }
+
     this.payments.set(payment.id, { ...payment });
     this.keyIndex.set(payment.idempotencyKey, payment.id);
+    this.investorIndex.set(pair, payment.id);
   }
 
   // -------------------------------------------------------------------------
