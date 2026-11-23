@@ -14,7 +14,7 @@ notification twice. The design is mostly about that gap.
 | Runner | `src/core/runner.ts` | Drives each payment from CREATED to terminal: record intent, send, interpret the response, poll status, drain async events. |
 | Reconciliation | `src/core/reconcile.ts` | End of run comparison of our store against the bank: `OURS_ONLY`, `BANK_ONLY`, `AMOUNT_MISMATCH`, `STATE_MISMATCH`. Reports; never fixes. |
 | Store port | `src/core/types.ts`, `src/store/` | `MemoryStore` for speed, `SqliteStore` for durability. |
-| Bank port | `src/core/types.ts`, `src/bank/` | `FakeBank` for scenarios; `FileBank` (a ledger on disk, so it survives a killed process) for crash tests. |
+| Bank port | `src/core/types.ts`, `src/bank/` | `FakeBank` for scenarios; `FileBank` (an on-disk ledger in `test/fixtures/`, so it survives a killed process) for crash tests. |
 | Harness | `harness/` | Scenario generator, invariant checker, break-it flags, CLI. |
 | Temporal adapter | `src/temporal/` | Durable version of the same runner: one workflow per distribution, all I/O in activities. |
 | MCP server | `src/mcp/` | Four read-only tools over the store. |

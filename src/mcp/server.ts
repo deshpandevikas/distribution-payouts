@@ -162,7 +162,7 @@ function explain(store: Store, payment: Payment): string {
           (escalation.reason !== undefined ? `: ${escalation.reason}.` : ".")
         : "It failed, but no audit entry records the failure - investigate.",
     );
-    lines.push("FAILED is terminal in this phase: paying it again is a new instruction and a human decision.");
+    lines.push("FAILED is not retried: paying it again is a new instruction and a human decision.");
   } else if (payment.state === "CONFIRMED") {
     lines.push("It is settled: the bank accepted the key and the money moved.");
   } else if (!TERMINAL_STATES.has(payment.state)) {

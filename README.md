@@ -58,7 +58,7 @@ More variants, crash injection and single-seed replay are in [RUNBOOK.md](RUNBOO
 |---|---|
 | `src/core/` | Money, allocation, state machine, runner, reconciliation. No Node imports, so it also runs in the browser. |
 | `src/store/` | `Store` port, `MemoryStore`, `SqliteStore`. |
-| `src/bank/` | `FakeBank` (seeded failure modes), `FileBank` (survives a killed process). |
+| `src/bank/` | `FakeBank` (seeded failure modes). `FileBank`, the on-disk ledger the crash tests use, is in `test/fixtures/`. |
 | `harness/` | Scenario generator, invariant checker, break-it flags. |
 | `src/temporal/` | Durable orchestration: one workflow per distribution, all I/O in activities. |
 | `src/mcp/` | Four read-only tools for an operator. |

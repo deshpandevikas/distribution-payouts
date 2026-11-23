@@ -1,7 +1,7 @@
 /**
- * R10: Store.transition() atomically writes state + audit entry.
- * savePayment() and appendAudit() are separate calls - a crash between them
- * leaves state changed but no audit row.
+ * Store.transition() writes the state change and the audit entry in one call.
+ * savePayment() and appendAudit() are separate, so a crash between them leaves
+ * the state changed and no audit row to explain it.
  */
 import { describe, it, expect } from "vitest";
 import { MemoryStore } from "../src/store/memoryStore.js";
