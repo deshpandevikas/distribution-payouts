@@ -96,3 +96,5 @@ Phase 1 (core runner, harness, invariants) and the later work — durable store,
 published replay page, read-only MCP — are in. The project deliberately stops short of
 maker-checker approval, identity holds, cancellation and investor notification; those are
 described in `docs/agreed-decisions.md` and left unbuilt.
+
+Every test, invariant and decision here I can defend line by line.
