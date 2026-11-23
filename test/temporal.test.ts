@@ -1,5 +1,5 @@
 /**
- * F3: Temporal path.
+ * The Temporal path.
  *
  * Same core logic, second execution model. The in-process runner and the
  * 2,000-scenario harness are untouched - this file only exercises the Temporal

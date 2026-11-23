@@ -1,8 +1,8 @@
 /**
- * F5: the MCP tools, exercised through the SDK's in-memory client.
+ * The MCP tools, exercised through the SDK's in-memory client.
  *
  * The server is given a Store, so the test points it at a real seeded SQLite
- * database (the F2 store) instead of a mock. That is the point: the tools must
+ * database (the SQLite store) instead of a mock. That is the point: the tools must
  * read what the runner actually wrote, including the audit trail.
  *
  * Read-only is asserted, not assumed: the tool list is checked by name, and a

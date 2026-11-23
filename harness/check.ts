@@ -4,9 +4,9 @@
  * Reads only outputs: audit log, final store snapshot, bank's settled records,
  * and the reconciliation report. Never touches runner internals.
  *
- * The same checker will grade the Temporal version in Phase 4.
+ * The same checker grades the Temporal version.
  *
- * Invariants (from Phase 1 handoff):
+ * Invariants:
  *
  *   I1: No idempotency key is settled more than once at the bank;
  *       no investor receives more than their allocated amount.
@@ -48,7 +48,7 @@ export interface CheckResult {
 // ---------------------------------------------------------------------------
 // Legal transitions - independent copy from docs/transitions.md.
 // Does NOT import from src/core/stateMachine.ts so a runner table bug cannot
-// blind this check (R7). Maintained in sync with the docs manually.
+// blind this check. Maintained in sync with the docs manually.
 // ---------------------------------------------------------------------------
 
 type TransitionKey = `${PaymentState}->${PaymentState}`;
@@ -80,7 +80,7 @@ const LEGAL_TRANSITIONS: ReadonlySet<TransitionKey> = new Set<TransitionKey>([
   // Contradictions routed to a human (MR cells in docs/transitions.md). A bank
   // telling us two incompatible things is not an illegal transition - it is the
   // case the design escalates. These were missing from this hand-copied grid
-  // because no scenario ever exercised them until F1 made lost/late
+  // because no scenario exercised them until the bank could lose or delay a
   // notifications routine:
   //   CONFIRMED:STATUS_FAILED, CONFIRMED:STATUS_NOT_FOUND, CONFIRMED:ASYNC_FAILURE
   //   FAILED:STATUS_CONFIRMED, FAILED:ASYNC_CONFIRM
@@ -114,7 +114,8 @@ export function check(inputs: CheckInputs): CheckResult {
 
   // -------------------------------------------------------------------------
   // I1: no key settled more than once; no investor paid more than allocated.
-  // Check from BANK records, not just our store (R2: double settlement invisible via Map).
+  // Check from BANK records, not just our store: a second settlement to the same
+  // account is invisible in our own rows.
   // -------------------------------------------------------------------------
   {
     // Our side: no two CONFIRMED payments share the same idempotency key.
@@ -215,7 +216,7 @@ export function check(inputs: CheckInputs): CheckResult {
   // I4: our CONFIRMED set === bank's settled set, except MANUAL_REVIEW payments
   //     which must appear in the reconciliation report.
   // Computed directly from store and bank - does NOT trust reconcile() output,
-  // so a bug in reconcile cannot blind this check (R7).
+  // so a bug in reconcile cannot blind this check.
   // -------------------------------------------------------------------------
   {
     // Build maps from our store.

@@ -1,12 +1,12 @@
 /**
- * C1/C2: the CI break-it step must fail for every break-it flag, with a named
+ * The CI break-it step must fail for every flag, with a named invariant.
  * invariant violation and exit code 1 - never a crash.
  *
  * ci.yml runs, once per flag:
  *
  *   npm run harness -- --scenarios=50 --break-it=$flag
  *
- * C1 fixed the case where a flag broke nothing and exited 0. C2 fixes the
+ * A flag that breaks nothing would otherwise exit 0 and pass CI. The step asserts
  * other half: the old step treated any non-zero exit as a catch, so a flag
  * that died on an exception looked identical to a flag that violated an
  * invariant. The harness now exits 1 only for a violation and 2 for any other
@@ -70,18 +70,18 @@ function runBreakItFlag(flag: string): Promise<RunResult> {
   });
 }
 
-// F1: timeoutAsFailure's expected invariant moved from I5 to I4. The I5 it used
+// timeoutAsFailure's expected invariant is I4, not I5. The I5 it used
 // to print was the checker's false positive on the FAILED->MANUAL_REVIEW and
 // CONFIRMED->MANUAL_REVIEW cells (both documented MR cells). What this bug really
 // violates is I4: the bank settled while we recorded FAILED.
-describe("C2: every break-it flag fails an invariant with exit 1", () => {
+describe("every break-it flag fails an invariant with exit 1", () => {
   for (const { flag, invariant } of BREAK_IT_FLAGS) {
     it(`${flag} exits 1 with VIOLATION: [${invariant}]`, async () => {
       const { code, output } = await runBreakItFlag(flag);
       const seen = output.slice(0, 4000);
 
-      // 0 = the flag broke nothing (C1). 2 = the harness threw; a crash is not
-      // a catch (C2). Only 1 means the checker caught the bug.
+      // 0 = the flag broke nothing. 2 = the harness threw; a crash is not
+      // a catch. Only 1 means the checker caught the bug.
       expect(code, `${flag} must exit 1 (invariant violation), got ${code}\n${seen}`).toBe(1);
 
       expect(
@@ -98,7 +98,7 @@ describe("C2: every break-it flag fails an invariant with exit 1", () => {
   }
 });
 
-describe("C2: a harness error is distinguishable from an invariant violation", () => {
+describe("a harness error is distinguishable from an invariant violation", () => {
   it("unknown break-it flag exits 2 and reports no violation", async () => {
     const { code, output } = await runBreakItFlag("notARealFlag");
     expect(code, `unknown flag must exit 2, got ${code}\n${output.slice(0, 2000)}`).toBe(2);

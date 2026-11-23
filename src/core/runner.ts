@@ -113,7 +113,7 @@ export class Runner {
       if (!payment) {
         // Zero-cent allocations: no payment, but recorded per agreed-decisions.md #13.
         // A console.log is not a record - put it in the alerts list where an
-        // operator querying the distribution can see it (C5).
+        // operator querying the distribution can see it.
         if (allocation.amountCents === 0) {
           const detail =
             `zero-cent allocation for investor ${allocation.investor.id}` +
@@ -275,7 +275,7 @@ export class Runner {
 
       case "REJECTED_TRANSIENT": {
         const nextRetries = payment.transientRetries + 1;
-        if (nextRetries >= this.config.maxTransientRetries) {
+        if (nextRetries >= this.config.maxSendAttempts) {
           // Retries exhausted - use TRANSIENT_RETRIES_EXHAUSTED for accurate audit.
           payment = { ...payment, transientRetries: nextRetries };
           this.store.savePayment(payment);
@@ -337,7 +337,7 @@ export class Runner {
       throw new CrashInjected("duringStatusCheck");
     }
 
-    // C6: drain async events before each status query. A late ASYNC_CONFIRM for
+    // Drain async events before each status query. A late ASYNC_CONFIRM for
     // this payment can arrive while it sits in UNKNOWN; draining only after a
     // payment finished meant the event never landed mid-flight, so the
     // UNKNOWN:ASYNC_CONFIRM path was dead in every scenario.
@@ -392,7 +392,7 @@ export class Runner {
           // Stay UNKNOWN - inside settle window, wait for bank to settle.
           // Sleeping the remaining window is what makes the window elapse at
           // all: without it the next check happens at the same instant, burns
-          // the status-check budget and the payment never reaches a resend (R3).
+          // the status-check budget and the payment never reaches a resend.
           const waiting = await this.applyAndSave(payment, { type: "STATUS_NOT_FOUND_IN_WINDOW" });
           await this.clock.sleep(this.config.settleWindowMs - age);
           return waiting;
@@ -439,7 +439,7 @@ export class Runner {
         // Bank reports a payment we never sent. There is no payment to attach a
         // state change to, so this is an alert keyed to the distribution - a
         // fabricated CREATED -> MANUAL_REVIEW audit row under
-        // distributionId "unknown" was invisible to the operator (C4).
+        // distributionId "unknown" was invisible to the operator.
         this.store.appendAlert({
           kind: "BANK_EVENT_FOR_UNKNOWN_KEY",
           distributionId,
@@ -517,7 +517,7 @@ export class Runner {
   }
 
   private onAlert(entry: AuditEntry): void {
-    // Phase 1: log to stderr. Phase N: hook into alerting system.
+    // Alerts reach the operator as a log line; there is no paging integration.
     console.error(
       `[ALERT] payment ${entry.paymentId} escalated to MANUAL_REVIEW` +
       ` (event: ${entry.event}, from: ${entry.fromState})` +
@@ -566,9 +566,9 @@ export function buildIdempotencyKey(
   instructionNo: number,
   retryNo = 0,
 ): IdempotencyKey {
-  // Readable on purpose (Q4): a key that appears in a bank statement, an audit
+  // Readable on purpose: a key that appears in a bank statement, an audit
   // row and an operator's message should say what it pays for. No hashing, so
-  // src/core stays free of node:crypto and can run in the browser (F4).
+  // src/core stays free of node:crypto and can run in the browser.
   //
   // Deterministic: same distribution + investor + instruction always gives the
   // same key, which is what makes a resend after a restart a no-op at the bank.

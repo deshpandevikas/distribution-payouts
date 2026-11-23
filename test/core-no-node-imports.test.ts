@@ -1,5 +1,5 @@
 /**
- * F4: the core must run in a browser.
+ * The core must run in a browser.
  *
  * The replay page runs the same core logic with the in-memory store and the
  * fake bank, so any Node built-in in src/core makes the page impossible to

@@ -1,7 +1,7 @@
 /**
- * R3 regression tests: the settle-window resend path must actually run.
+ * The settle-window resend path must actually run.
  *
- * C3 found two reasons it never did:
+ * The path is easy to break in two ways:
  *   - the harness clock ignored the ms passed to sleep(), so time moved 1ms per
  *     call and a 120_000ms window could never elapse;
  *   - nothing in checkStatus() ever slept, so an UNKNOWN payment re-queried
@@ -30,7 +30,7 @@ function makeDist(id: string, totalCents: number): Distribution {
   };
 }
 
-describe("R3: Clock has sleep()", () => {
+describe("the clock can wait", () => {
   it("Clock interface requires sleep(ms) method", () => {
     // This test verifies the interface at the type level.
     // A clock without sleep() should not compile.
@@ -42,7 +42,7 @@ describe("R3: Clock has sleep()", () => {
   });
 });
 
-describe("R3: settle-window wait and resend are exercised", () => {
+describe("the settle window waits, then resends the same key", () => {
   it("waits inside the window, then resends the same key once the window is gone", async () => {
     // Bank never reveals status (lagChecks far above the check budget), so the
     // payment cannot resolve by status: the only way out is wait -> resend.
@@ -57,7 +57,7 @@ describe("R3: settle-window wait and resend are exercised", () => {
 
     // This test is about the settle-window wait/resend, not about late async
     // events. Hold the bank's async events back: they have not arrived yet.
-    // Otherwise C6's mid-flight drain resolves the payment before the first
+    // Otherwise the mid-flight drain resolves the payment before the first
     // status query and the wait/resend sequence never runs.
     bank.drainAsyncEvents = () => [];
 

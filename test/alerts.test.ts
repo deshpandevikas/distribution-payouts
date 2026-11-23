@@ -1,15 +1,15 @@
 /**
- * C4/C5: things an operator must see that are not payment state changes belong
- * in an alerts list, not in the payment audit log.
+ * Things an operator must see that are not payment state changes belong in an
+ * alerts list, not in the payment audit log.
  *
- * C4 (before the fix): a bank event for a key we never sent was appended to the
- * audit log as `paymentId: "unknown:<key>"`, `distributionId: "unknown"` and a
- * fabricated `CREATED -> MANUAL_REVIEW` transition. No payment exists, so
+ * A bank event for a key we never sent used to be appended to the audit log as
+ * `paymentId: "unknown:<key>"`, `distributionId: "unknown"` and a fabricated
+ * `CREATED -> MANUAL_REVIEW` transition. No payment exists, so
  * `listAudit(realDistributionId)` never showed it: the alert was invisible to
  * the very operator it was written for.
  *
- * C5 (before the fix): a zero-cent allocation was only a console.log. Decision
- * #13 says it must be recorded, and C4's list is where.
+ * A zero-cent allocation used to be only a console.log. Decision 9 says it must be
+ * recorded, and the alerts list is where.
  */
 
 import { describe, it, expect } from "vitest";
@@ -48,7 +48,7 @@ const CLEAN_BANK = {
   statusTimeoutRate: 0,
 };
 
-describe("C4: bank event for a key we never sent", () => {
+describe("a bank event for a key we never sent", () => {
   it("writes an alert keyed to the distribution, not a fabricated payment audit row", async () => {
     const bank = new FakeBank({ next: () => 0.5 }, CLEAN_BANK);
     let pending: Array<{ key: string; type: "ASYNC_CONFIRM" | "ASYNC_FAILURE" }> = [
@@ -84,7 +84,7 @@ describe("C4: bank event for a key we never sent", () => {
   });
 });
 
-describe("C5: zero-cent allocation is recorded, not just logged", () => {
+describe("a zero-cent allocation is recorded, not just logged", () => {
   it("appends ALLOCATION_SKIPPED to the alerts list and creates no payment", async () => {
     const bank = new FakeBank({ next: () => 0.5 }, CLEAN_BANK);
     const store = new MemoryStore();

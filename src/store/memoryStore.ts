@@ -5,7 +5,7 @@
  * (src/store/sqliteStore.ts) is the durable implementation of the same port, and
  * the contract suite runs against both, so the two cannot drift silently.
  *
- * Thread safety: not a concern in Phase 1 (single-threaded Node event loop,
+ * Thread safety: not a concern here (single-threaded Node event loop,
  * no worker threads, no async interleaving inside a single runner tick).
  */
 

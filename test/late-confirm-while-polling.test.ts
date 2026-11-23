@@ -1,5 +1,5 @@
 /**
- * C6: async events must be able to land while a payment is in flight.
+ * Async events must be able to land while a payment is in flight.
  *
  * Before the fix, drainAsyncEvents() ran only after each payment finished, so a
  * late ASYNC_CONFIRM for a payment sitting in UNKNOWN could not arrive until
@@ -28,7 +28,7 @@ function makeDist(id: string, totalCents: number): Distribution {
   };
 }
 
-describe("C6: async event lands while the payment is UNKNOWN", () => {
+describe("an async event lands while the payment is UNKNOWN", () => {
   it("confirms an UNKNOWN payment from its late ASYNC_CONFIRM, with no resend", async () => {
     const bank = new FakeBank({ next: () => 0.5 }, {
       permanentRejectRate: 0,
@@ -60,7 +60,7 @@ describe("C6: async event lands while the payment is UNKNOWN", () => {
     const audit = store.listAudit("dist-c6");
     const cells = audit.map(e => `${e.fromState}:${e.event}`).join(", ");
 
-    // The event was applied from UNKNOWN - the cell C6 is about.
+    // The event was applied from UNKNOWN, the cell this test is about.
     expect(
       audit.some(e => e.event === "ASYNC_CONFIRM" && e.fromState === "UNKNOWN" && e.toState === "CONFIRMED"),
       `expected UNKNOWN:ASYNC_CONFIRM, got: ${cells}`,

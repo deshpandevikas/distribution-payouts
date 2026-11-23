@@ -172,7 +172,7 @@ export class SqliteStore implements Store {
   private readonly writeTransition: (payment: Payment, entry: AuditEntry) => void;
 
   /**
-   * Open an existing database read-only: the MCP server's path (G2).
+   * Open an existing database read-only: the MCP server's path.
    *
    * `fileMustExist` is deliberate. Creating an empty file on a typo would answer
    * every operator question with "no payments", which looks exactly like a
@@ -192,7 +192,7 @@ export class SqliteStore implements Store {
       this.db = new Database(file);
 
       // WAL survives an abrupt kill; FULL makes the commit durable before we
-      // proceed to the bank call. Both are required by the F2 crash test.
+      // proceed to the bank call. Both are required by the crash test.
       this.db.pragma("journal_mode = WAL");
       this.db.pragma("synchronous = FULL");
       this.db.exec(SCHEMA);

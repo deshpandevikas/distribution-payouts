@@ -1,22 +1,19 @@
 /**
- * F1: a bank notification is not guaranteed - it can be lost or late.
+ * A bank notification is not guaranteed: it can be lost or late.
  *
- * Phase 1's fake bank queued an event for every outcome that could leave a
- * payment in UNKNOWN, so after C6 (drain before every status query) the payment
- * was always resolved by the event and no query was ever issued from UNKNOWN.
- * That made UNKNOWN:BANK_TIMEOUT, UNKNOWN:STATUS_NOT_FOUND and
- * UNKNOWN:STATUS_NOT_FOUND_IN_WINDOW unreachable in the default sweep - not
- * rare, unreachable (see the F1 pre-work section of the final-phase report).
+ * A fake bank that queues an event for every outcome that leaves a payment in
+ * UNKNOWN resolves every such payment by event, so no status query is ever
+ * issued from UNKNOWN. That makes UNKNOWN:BANK_TIMEOUT, UNKNOWN:STATUS_NOT_FOUND
+ * and UNKNOWN:STATUS_NOT_FOUND_IN_WINDOW unreachable rather than rare.
  *
- * The fix is bank behaviour, not scenario variety: real banks lose webhooks and
- * deliver them late. The fake bank needs the same two failure modes, seeded from
- * its injected Rng so a seed stays reproducible:
+ * Real banks lose webhooks and deliver them late, so the fake bank has the same
+ * two failure modes, seeded from its injected Rng so a seed stays reproducible:
  *
- *   asyncDropRate    - the notification is lost entirely
- *   asyncDelayChecks - it arrives only after N status queries for that key
+ *   asyncDropRate:    the notification is lost entirely
+ *   asyncDelayChecks: it arrives only after N status queries for that key
  *
- * The last two cases pin the coverage F1 asks for: the query really runs from
- * UNKNOWN (BANK_TIMEOUT), and FAILED + a late confirm still escalates.
+ * The last two cases pin the coverage: the query really runs from UNKNOWN
+ * (BANK_TIMEOUT), and FAILED plus a late confirm still escalates.
  */
 
 import { describe, it, expect } from "vitest";
@@ -35,7 +32,7 @@ function makeDist(id: string, totalCents: number): Distribution {
   };
 }
 
-describe("F1: a dropped notification", () => {
+describe("a dropped notification", () => {
   it("never reaches drainAsyncEvents, while the status query still sees the truth", async () => {
     const bank = new FakeBank({ next: () => 0.5 }, {
       permanentRejectRate: 0,
@@ -48,7 +45,6 @@ describe("F1: a dropped notification", () => {
 
     await bank.send("key-drop", 100, "routing:test");
 
-    // Before the fix this returns [{ key: "key-drop", type: "ASYNC_CONFIRM" }]:
     // there was no way to model a lost notification at all.
     expect(bank.drainAsyncEvents(), "a dropped notification must never be delivered").toHaveLength(0);
 
@@ -57,7 +53,7 @@ describe("F1: a dropped notification", () => {
   });
 });
 
-describe("F1: a delayed notification", () => {
+describe("a delayed notification", () => {
   it("arrives only after asyncDelayChecks status queries for that key", async () => {
     const bank = new FakeBank({ next: () => 0.5 }, {
       permanentRejectRate: 0,
@@ -81,7 +77,7 @@ describe("F1: a delayed notification", () => {
   });
 });
 
-describe("F1: a payment can be queried while it is UNKNOWN", () => {
+describe("a payment can be queried while it is UNKNOWN", () => {
   it("hits UNKNOWN:BANK_TIMEOUT when the notification is lost and the query times out", async () => {
     // Notification lost + every status query times out: the only way this
     // payment can move is the query path from UNKNOWN, which is the cell.
@@ -117,7 +113,7 @@ describe("F1: a payment can be queried while it is UNKNOWN", () => {
   });
 });
 
-describe("F1: FAILED:ASYNC_CONFIRM stays reachable", () => {
+describe("a late confirmation on a FAILED payment", () => {
   it("a late confirm on a FAILED payment escalates to MANUAL_REVIEW", async () => {
     // A lying transient on the last allowed attempt: the payment exhausts its
     // retries and reaches FAILED with the confirmation still in flight, so the
@@ -140,7 +136,7 @@ describe("F1: FAILED:ASYNC_CONFIRM stays reachable", () => {
     const runner = new Runner({
       store, bank, clock,
       rng: { next: () => 0.5 },
-      config: { maxTransientRetries: 1, backoffBaseMs: 0, settleWindowMs: 0 },
+      config: { maxSendAttempts: 1, backoffBaseMs: 0, settleWindowMs: 0 },
     });
 
     await runner.run(makeDist("dist-f1-failed", 100));

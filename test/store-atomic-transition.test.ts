@@ -1,6 +1,6 @@
 /**
  * R10: Store.transition() atomically writes state + audit entry.
- * Before fix: savePayment() and appendAudit() are separate calls - a crash between them
+ * savePayment() and appendAudit() are separate calls - a crash between them
  * leaves state changed but no audit row.
  */
 import { describe, it, expect } from "vitest";
@@ -24,7 +24,7 @@ function makeAudit(paymentId: string): AuditEntry {
   };
 }
 
-describe("R10: atomic transition", () => {
+describe("an atomic transition", () => {
   it("Store has a transition() method that writes payment and audit entry together", () => {
     const store = new MemoryStore();
     const payment = makePayment();
@@ -33,8 +33,6 @@ describe("R10: atomic transition", () => {
     const updated: Payment = { ...payment, state: "SENDING", updatedAt: 1 };
     const entry = makeAudit(payment.id);
 
-    // Before fix: no transition() method on Store
-    // After fix: transition() exists and writes both atomically
     expect(typeof store.transition).toBe("function");
     store.transition(updated, entry);
 
@@ -44,7 +42,7 @@ describe("R10: atomic transition", () => {
 
   it("transition() is atomic: either both writes happen or neither", () => {
     // In MemoryStore this is trivially atomic (synchronous). The test verifies
-    // the interface exists so SQLite can implement it as a transaction in Phase 5.
+    // the interface exists so SQLite can implement it as one transaction.
     const store = new MemoryStore();
     const payment = makePayment();
     store.savePayment(payment);

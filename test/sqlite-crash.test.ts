@@ -1,5 +1,5 @@
 /**
- * F2 crash test.
+ * A committed state change survives a killed process.
  *
  * A real child process, killed with SIGKILL between the bank call and the
  * record step, then the same database file reopened in this process. Recovery

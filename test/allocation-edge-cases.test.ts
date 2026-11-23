@@ -1,5 +1,5 @@
 /**
- * R9 regression tests:
+ * Edge cases of the split:
  *   (a) Float math loses money on large totals / large basis values
  *   (b) All-zero basis with totalCents > 0 should throw, not silently return zeros
  *   (c) Duplicate investor ids silently collide in bonusCents Map
@@ -15,7 +15,7 @@ function inv(id: string, basisUnits: number): AllocationInput {
   return { investor: { id, name: `Investor ${id}`, bankDetails: `bank:${id}` }, basisUnits };
 }
 
-describe("R9a: float math loses money on large values", () => {
+describe("large totals and basis units keep every cent", () => {
   it("sum equals total for large totalCents and large basis values", () => {
     // 2^53 - 1 is MAX_SAFE_INTEGER; large products can exceed it in float math
     // e.g. 10_000_000_00 (10M dollars in cents) with basis values up to 10_000
@@ -53,7 +53,7 @@ describe("R9a: float math loses money on large values", () => {
   });
 });
 
-describe("R9b: all-zero basis with nonzero total should throw", () => {
+describe("all-zero basis with a nonzero total throws", () => {
   it("throws AllocationError when all basis units are zero and total > 0", () => {
     expect(() => allocate(100, [inv("a", 0), inv("b", 0)])).toThrow(AllocationError);
   });
@@ -63,13 +63,13 @@ describe("R9b: all-zero basis with nonzero total should throw", () => {
   });
 });
 
-describe("R9c: duplicate investor ids collide in bonus allocation", () => {
+describe("duplicate investor ids are rejected", () => {
   it("throws AllocationError on duplicate investor ids", () => {
     expect(() => allocate(100, [inv("dup", 1), inv("dup", 2)])).toThrow(AllocationError);
   });
 });
 
-describe("R9d: property tests", () => {
+describe("properties of the split", () => {
   const inputsArb = fc.array(
     fc.record({
       id: fc.uniqueArray(fc.string({ minLength: 1, maxLength: 8 }), { minLength: 1, maxLength: 1 }).map(arr => arr[0]!),

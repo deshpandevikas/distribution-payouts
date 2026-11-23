@@ -1,5 +1,5 @@
 /**
- * R7 regression tests:
+ * The checker must not trust what it is checking:
  *   (a) I4 trusts reconcile() output - a reconcile bug blinds I4
  *   (b) I5 missing continuity check (entry[i].toState === entry[i+1].fromState)
  *   (c) I5 uses runner's own transition table - an imported table bug blinds I5
@@ -43,7 +43,7 @@ function makeAuditEntry(paymentId: string, from: AuditEntry["fromState"], to: Au
   };
 }
 
-describe("R7a: I4 computed directly from store and bank, not via reconcile", () => {
+describe("I4 is computed from the store and the bank, not from reconcile", () => {
   it("detects I4 violation even when reconcile() has a bug that hides it", async () => {
     // We test that check() computes I4 independently.
     // Set up: bank settled key-1, our store shows CONFIRMED for key-1 - this is clean.
@@ -88,14 +88,12 @@ describe("R7a: I4 computed directly from store and bank, not via reconcile", () 
       totalAllocatedCents: 1500,
     });
 
-    // Before fix: I4 trusts the empty report, finds no violations
-    // After fix: I4 computes directly, finds bank settled key-2 but we show FAILED
     const i4 = result.violations.filter(v => v.invariant === "I4");
     expect(i4.length).toBeGreaterThan(0);
   });
 });
 
-describe("R7b: I5 continuity check", () => {
+describe("I5 catches a gap in the audit trail", () => {
   it("detects a gap where audit entry[i].toState !== entry[i+1].fromState", () => {
     const store = new MemoryStore();
     const bank = new FakeBank(rngFromSeed(1), {
@@ -117,8 +115,6 @@ describe("R7b: I5 continuity check", () => {
       totalAllocatedCents: 100,
     });
 
-    // Before fix: I5 does not check continuity, so the gap is missed
-    // After fix: I5 catches entry[0].toState (SENDING) !== entry[1].fromState (UNKNOWN)
     const i5 = result.violations.filter(v => v.invariant === "I5");
     expect(i5.length).toBeGreaterThan(0);
   });

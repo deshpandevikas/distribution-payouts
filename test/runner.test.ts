@@ -123,7 +123,7 @@ describe("Runner", () => {
 
   describe("transient retries", () => {
     it("retries and confirms after transient rejections below threshold", async () => {
-      // 2 transient rejections then accept; maxTransientRetries = 3
+      // 2 transient rejections then accept; maxSendAttempts = 3
       let calls = 0;
       const store = new MemoryStore();
       const bank: import("../src/core/types.js").Bank = {
@@ -141,7 +141,7 @@ describe("Runner", () => {
         store, bank,
         clock: { now: () => now++, sleep: async () => { now += 1; } },
         rng: rngFromSeed(1),
-        config: { maxTransientRetries: 3, backoffBaseMs: 0 },
+        config: { maxSendAttempts: 3, backoffBaseMs: 0 },
       });
 
       const dist = makeDist("d4", 100, [{ id: "a", basis: 1 }]);
@@ -164,7 +164,7 @@ describe("Runner", () => {
         store, bank,
         clock: { now: () => now++, sleep: async () => { now += 1; } },
         rng: rngFromSeed(1),
-        config: { maxTransientRetries: 3, backoffBaseMs: 0 },
+        config: { maxSendAttempts: 3, backoffBaseMs: 0 },
       });
 
       const dist = makeDist("d5", 100, [{ id: "a", basis: 1 }]);

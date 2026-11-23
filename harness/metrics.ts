@@ -2,7 +2,7 @@
  * Harness metrics collection.
  *
  * Aggregates results across multiple scenario runs and prints a summary.
- * Per Phase 1 handoff requirements:
+ * The numbers the harness reports:
  *   - payments total
  *   - manual-intervention rate (payments that touched MANUAL_REVIEW / total)
  *   - count that hit UNKNOWN at any point

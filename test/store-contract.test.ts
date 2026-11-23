@@ -4,7 +4,7 @@
  * One suite, two implementations. Anything the runner relies on must hold for
  * both: the MemoryStore is the reference, the SQLite store is the one that has
  * to survive a process being killed. Writing this once and running it twice is
- * what stops the two from drifting (F2).
+ * what stops the two from drifting.
  *
  * These tests are deliberately implementation-blind: no SQL, no table names, no
  * connection handling. Persistence across a reopen is the only test that needs

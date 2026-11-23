@@ -75,7 +75,7 @@ export interface FakeBankConfig {
    * 0-1 probability that a notification (ASYNC_CONFIRM / ASYNC_FAILURE) is lost
    * before it ever reaches us. Real banks lose webhooks; the money has still
    * moved, so only a status query can reveal the truth. Default 0 - every event
-   * is delivered, which was the only behaviour in Phase 1.
+   * is delivered, which is the only behaviour when no delay is set.
    */
   asyncDropRate: number;
   /**
@@ -156,13 +156,13 @@ export class FakeBank implements Bank {
    * Every transfer made, one entry per settling send - deliberately not keyed.
    * records is one-per-key, so resending a settled key overwrites the earlier
    * transfer and hides it. That is the same "double settlement invisible via a
-   * Map" blind spot R2 closed for distinct keys, still open for one key sent
+   * Map" blind spot closed for distinct keys, still open for one key sent
    * twice. Only populated when dedupe=false (see recordSettlement).
    */
   private readonly settlementLedger: Settlement[] = [];
   private readonly asyncQueue: QueuedAsyncEvent[] = [];
   private readonly lagCheckCounts = new Map<IdempotencyKey, number>();
-  /** Status queries per key - gates delivery when asyncDelayChecks > 0 (F1). */
+  /** Status queries per key - gates delivery when asyncDelayChecks > 0. */
   private readonly queryCounts = new Map<IdempotencyKey, number>();
   private readonly rng: Rng;
   private readonly config: FakeBankConfig;
@@ -247,7 +247,7 @@ export class FakeBank implements Bank {
   // -------------------------------------------------------------------------
 
   async getStatus(key: IdempotencyKey): Promise<BankStatusResponse> {
-    // Count every query, whatever it answers: a delayed notification (F1) is
+    // Count every query, whatever it answers: a delayed notification is
     // released once the bank has been asked this many times for that key.
     this.queryCounts.set(key, (this.queryCounts.get(key) ?? 0) + 1);
 
@@ -383,7 +383,7 @@ export class FakeBank implements Bank {
   }
 
   /**
-   * Queue one notification, applying the two delivery failure modes (F1).
+   * Queue one notification, applying the two delivery failure modes.
    * The Rng is only drawn when a rate is non-zero, so every existing config
    * keeps the exact stream - and therefore the exact outcomes - it had before.
    */

@@ -1,5 +1,5 @@
 /**
- * H1: the replay page's six stories, as tests.
+ * The replay page's six stories, as tests.
  *
  * The page promises a stranger that a story ends a particular way: three normal
  * days pass, two planted bugs are caught, and one ends with a person holding the
@@ -30,7 +30,7 @@ async function runStory(id: string): Promise<{ story: Story; outcome: ReplayOutc
 
 const PASS_LINE = "Passed: everyone paid exactly once, $600.00 accounted for";
 
-describe("H1: six stories, fixed seeds", () => {
+describe("six stories, fixed seeds", () => {
   it("ships exactly the six stories the page advertises, with unique link ids", () => {
     expect(STORIES.map((s) => s.id)).toEqual([
       "normal-day",
@@ -67,7 +67,7 @@ describe("H1: six stories, fixed seeds", () => {
   });
 });
 
-describe("H1: the three normal stories pass", () => {
+describe("the three normal stories pass", () => {
   it("normal day: every investor paid once, $600.00 accounted for", async () => {
     const { story: s, outcome } = await runStory("normal-day");
 
@@ -123,7 +123,7 @@ describe("H1: the three normal stories pass", () => {
   });
 });
 
-describe("H1: the two planted bugs are caught", () => {
+describe("the two planted bugs are caught", () => {
   it("new key on retry: the bank pays someone twice, caught by I1", async () => {
     const { story: s, outcome } = await runStory("new-key-on-retry");
 
@@ -159,7 +159,7 @@ describe("H1: the two planted bugs are caught", () => {
   });
 });
 
-describe("H1: the story that hands the money to a person", () => {
+describe("the story that hands the money to a person", () => {
   it("bank goes quiet: one payment stuck, nobody double-paid, a human owns it", async () => {
     const { story: s, outcome } = await runStory("bank-goes-quiet");
 
@@ -185,7 +185,7 @@ describe("H1: the story that hands the money to a person", () => {
   });
 });
 
-describe("H1: the page stays reproducible", () => {
+describe("the page stays reproducible", () => {
   it("gives the same verdict and the same payments on a second run", async () => {
     for (const s of STORIES) {
       const first = await replay(s.options);
@@ -198,7 +198,7 @@ describe("H1: the page stays reproducible", () => {
   });
 });
 
-describe("H1: payments table in plain English", () => {
+describe("payments table in plain English", () => {
   it("shows the investor whose share rounded to zero instead of hiding them", async () => {
     const { outcome } = await runStory("normal-day");
     const skipped = paymentRows(outcome).find((r) => r.investorId === "inv-6");

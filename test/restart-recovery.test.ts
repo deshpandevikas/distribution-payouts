@@ -1,10 +1,10 @@
 /**
- * R1 regression test: restart in SENDING must status-check, never blind resend.
+ * A restart in SENDING must status-check, never blind resend.
  *
- * Before fix: RECOVERY_ON_RESTART in SENDING stays SENDING, then processPayment
+ * RECOVERY_ON_RESTART in SENDING stays SENDING, then processPayment
  * calls sendPayment directly - a blind resend. The bank's dedupe hides it.
  *
- * After fix: recovery in SENDING goes through status check first.
+ * recovery in SENDING goes through status check first.
  * With dedupe=false, a blind resend would double-settle the account.
  */
 
@@ -25,10 +25,9 @@ function makeDist(id: string, totalCents: number): Distribution {
   };
 }
 
-describe("R1: restart in SENDING status-checks before resending", () => {
+describe("a restart in SENDING status-checks before resending", () => {
   it("does not send twice when crashed after intent recorded (dedupe=false)", async () => {
     // With dedupe=false, a blind resend would create a second settlement.
-    // With the fix, restart goes through status check and finds CONFIRMED.
     const sendKeys: string[] = [];
     const bank = new FakeBank({ next: () => 0.5 }, {
       permanentRejectRate: 0,

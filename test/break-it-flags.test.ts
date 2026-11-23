@@ -1,7 +1,7 @@
 /**
- * R6: One test per break-it flag.
+ * One test per break-it flag.
  *
- * Rules per review:
+ * Each flag is tested two ways:
  *   (a) Flag-OFF run on fixed seeds exercises the target cell at least once.
  *   (b) Flag-ON run violates the NAMED invariant at least once.
  *   (c) An exception counts as a failed test, not a catch.
@@ -39,7 +39,7 @@ async function runWithConfig(
     ...bankConfig,
   });
   // Model a bank whose async notification has not arrived yet: without this the
-  // mid-flight drain (C6) resolves the payment before any status query runs.
+  // mid-flight drain resolves the payment before any status query runs.
   if (opts.suppressAsyncEvents) bank.drainAsyncEvents = () => [];
   let now = 0;
   const clock = { now: () => now++, sleep: async () => { now += 1; } };
@@ -66,7 +66,7 @@ function anySeedExercisesCell(coverages: Array<ReturnType<typeof collectGridCove
 // ---------------------------------------------------------------------------
 // skipIntentRecord: target cell CREATED:SEND_INTENT_RECORDED; breaks I5
 // ---------------------------------------------------------------------------
-describe("R6: skipIntentRecord", () => {
+describe("skipIntentRecord", () => {
   it("(a) flag-OFF exercises CREATED:SEND_INTENT_RECORDED", async () => {
     const coverages = await Promise.all(FIXED_SEEDS.map(async seed => {
       const { coverage } = await runWithConfig(seed, {});
@@ -87,7 +87,7 @@ describe("R6: skipIntentRecord", () => {
 // ---------------------------------------------------------------------------
 // timeoutAsFailure: target cell SENDING:BANK_TIMEOUT (via flag-off); breaks I2/I3
 // ---------------------------------------------------------------------------
-describe("R6: timeoutAsFailure", () => {
+describe("timeoutAsFailure", () => {
   it("(a) flag-OFF exercises SENDING:BANK_TIMEOUT", async () => {
     const coverages = await Promise.all(FIXED_SEEDS.map(async seed => {
       const { coverage } = await runWithConfig(seed, {}, { timeoutRate: 0.5, permanentRejectRate: 0, transientRejectRate: 0 });
@@ -117,7 +117,7 @@ describe("R6: timeoutAsFailure", () => {
 // ---------------------------------------------------------------------------
 // newKeyOnRetry: target cell SENDING:BANK_REJECTED_TRANSIENT; breaks I1
 // ---------------------------------------------------------------------------
-describe("R6: newKeyOnRetry", () => {
+describe("newKeyOnRetry", () => {
   it("(a) flag-OFF exercises SENDING:BANK_REJECTED_TRANSIENT", async () => {
     const coverages = await Promise.all(FIXED_SEEDS.map(async seed => {
       const { coverage } = await runWithConfig(seed, {}, { transientRejectRate: 0.5, permanentRejectRate: 0, timeoutRate: 0 });
@@ -129,7 +129,7 @@ describe("R6: newKeyOnRetry", () => {
   it("(b) flag-ON violates I1 (new key on retry can double-settle)", async () => {
     const results = await Promise.all(FIXED_SEEDS.map(async seed => {
       const { result } = await runWithConfig(seed,
-        { newKeyOnRetry: true, maxTransientRetries: 3 },
+        { newKeyOnRetry: true, maxSendAttempts: 3 },
         { transientRejectRate: 0.3, permanentRejectRate: 0, timeoutRate: 0, statusTimeoutRate: 0, dedupe: false },
       );
       return result;
@@ -142,7 +142,7 @@ describe("R6: newKeyOnRetry", () => {
 // ---------------------------------------------------------------------------
 // overwriteConflictingConfirm: target cell SENDING:BANK_REJECTED_TRANSIENT (lying transient path); breaks I5
 // ---------------------------------------------------------------------------
-describe("R6: overwriteConflictingConfirm", () => {
+describe("overwriteConflictingConfirm", () => {
   it("(a) flag-OFF exercises SENDING:BANK_REJECTED_TRANSIENT (lying transient path)", async () => {
     const coverages = await Promise.all(FIXED_SEEDS.map(async seed => {
       const { coverage } = await runWithConfig(seed, {}, { transientRejectRate: 0.3, lyingTransientRate: 0.8, permanentRejectRate: 0, timeoutRate: 0 });
@@ -154,7 +154,7 @@ describe("R6: overwriteConflictingConfirm", () => {
   it("(b) flag-ON violates I5 (CONFIRMED written without audit entry)", async () => {
     const results = await Promise.all(FIXED_SEEDS.map(async seed => {
       const { result } = await runWithConfig(seed,
-        { overwriteConflictingConfirm: true, maxTransientRetries: 3 },
+        { overwriteConflictingConfirm: true, maxSendAttempts: 3 },
         { transientRejectRate: 0.5, lyingTransientRate: 1, permanentRejectRate: 0, timeoutRate: 0, statusTimeoutRate: 0 },
       );
       return result;
@@ -166,7 +166,7 @@ describe("R6: overwriteConflictingConfirm", () => {
 // ---------------------------------------------------------------------------
 // resendWithoutStatusCheck: target cell UNKNOWN:BANK_TIMEOUT; breaks I1
 // ---------------------------------------------------------------------------
-describe("R6: resendWithoutStatusCheck", () => {
+describe("resendWithoutStatusCheck", () => {
   it("(a) flag-OFF exercises UNKNOWN:BANK_TIMEOUT", async () => {
     const coverages = await Promise.all(FIXED_SEEDS.map(async seed => {
       const { coverage } = await runWithConfig(
@@ -183,7 +183,7 @@ describe("R6: resendWithoutStatusCheck", () => {
   it("(b) flag-ON violates I1 (resend without status check can double-settle)", async () => {
     // Note: resendWithoutStatusCheck may throw IllegalTransitionError when
     // BANK_ACCEPTED arrives in UNKNOWN state (the state machine catches the bug).
-    // Per R6 rules: an exception counts as a failed test (the flag IS breaking something).
+    // An exception counts as a failed test: the flag is breaking something.
     const anyViolationOrException = await Promise.all(FIXED_SEEDS.map(async seed => {
       try {
         const { result } = await runWithConfig(seed,

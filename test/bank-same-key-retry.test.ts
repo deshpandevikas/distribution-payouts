@@ -1,11 +1,8 @@
 /**
- * R0 regression test: same-key retry after transient rejection must be able to confirm.
+ * A same-key retry after a transient rejection must be able to confirm.
  *
- * Before the fix: FakeBank stores REJECTED_TRANSIENT under the key and replays it on
- * every retry, so a same-key retry can never succeed. Every transient ends FAILED.
- *
- * After the fix: only ACCEPTED and REJECTED_PERMANENT are committed outcomes.
- * A retry on a transient-rejected or unresolved-timeout key rolls fresh.
+ * The fake bank commits only ACCEPTED and REJECTED_PERMANENT as outcomes. A retry on a
+ * transient-rejected or unresolved-timeout key rolls fresh, the way a real bank does.
  */
 
 import { describe, it, expect } from "vitest";
@@ -27,12 +24,10 @@ function makeDist(totalCents: number, investorId: string): Distribution {
   return { id: "dist-r0", totalCents, allocations, createdAt: 0 };
 }
 
-describe("R0: same-key retry after transient rejection", () => {
+describe("a transient rejection does not poison the key", () => {
   it("confirms on retry after one transient rejection", async () => {
     // Bank: first roll => transient (0.15, inside permanentRejectRate=0.05 + transientRejectRate=0.1 window)
     //       second roll (retry) => accepted (0.5, above all reject thresholds)
-    // With the bug: second send replays REJECTED_TRANSIENT, payment ends FAILED.
-    // With the fix: second send rolls fresh, gets ACCEPTED, payment ends CONFIRMED.
     const bank = new FakeBank(listRng([0.08, 0.5]), {
       permanentRejectRate: 0.05,
       transientRejectRate: 0.10,
@@ -46,7 +41,7 @@ describe("R0: same-key retry after transient rejection", () => {
       store, bank,
       clock: { now: () => now++, sleep: async () => { now += 1; } },
       rng: { next: () => 0 }, // zero jitter
-      config: { maxTransientRetries: 3, backoffBaseMs: 0, settleWindowMs: 0 },
+      config: { maxSendAttempts: 3, backoffBaseMs: 0, settleWindowMs: 0 },
     });
 
     const dist = makeDist(100, "inv-a");
@@ -57,7 +52,6 @@ describe("R0: same-key retry after transient rejection", () => {
   });
 
   it("counts confirmed payments with transientRetries > 0 as non-zero across scenarios", async () => {
-    // With the bug this count is always 0 — same-key retries never confirm.
     let confirmedWithRetries = 0;
 
     for (let seed = 1; seed <= 500; seed++) {
@@ -75,7 +69,7 @@ describe("R0: same-key retry after transient rejection", () => {
         store, bank,
         clock: { now: () => now++, sleep: async () => { now += 1; } },
         rng: { next: () => 0 },
-        config: { maxTransientRetries: 3, backoffBaseMs: 0, settleWindowMs: 0 },
+        config: { maxSendAttempts: 3, backoffBaseMs: 0, settleWindowMs: 0 },
       });
 
       const dist = makeDist(100, `inv-${seed}`);
@@ -87,7 +81,6 @@ describe("R0: same-key retry after transient rejection", () => {
       }
     }
 
-    // With the bug: 0. With the fix: 500 (every scenario retries once and confirms).
     expect(confirmedWithRetries).toBeGreaterThan(0);
   });
 });

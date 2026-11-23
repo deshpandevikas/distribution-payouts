@@ -1,8 +1,7 @@
 /**
- * R2 regression tests:
- *   (a) bankDetails reaches the bank as "" - investor account is unroutable
- *   (b) FakeBank.getSettledKeys() is a Map - a double settlement is invisible by construction
- *   (c) checker I1 checks our records only, not the bank's per-account settlement list
+ * The bank must see the investor's account, and the checker must see settlements
+ * per account rather than per key. Otherwise a second payment to the same account
+ * is invisible by construction.
  */
 
 import { describe, it, expect } from "vitest";
@@ -21,7 +20,7 @@ function makeDist(id: string, totalCents: number, investors: { id: string; bankD
   return { id, totalCents, allocations, createdAt: 0 };
 }
 
-describe("R2a: bankDetails passed to bank.send", () => {
+describe("bank details reach the bank", () => {
   it("bank receives the investor bankDetails, not empty string", async () => {
     const sentDetails: string[] = [];
     const bank: import("../src/core/types.js").Bank = {
@@ -53,7 +52,7 @@ describe("R2a: bankDetails passed to bank.send", () => {
   });
 });
 
-describe("R2b: FakeBank records settlements per account", () => {
+describe("settlements are recorded per account", () => {
   it("tracks settled amount per bankDetails account, not just per key", async () => {
     const bank = new FakeBank({ next: () => 0.5 }, {
       permanentRejectRate: 0,
@@ -75,7 +74,7 @@ describe("R2b: FakeBank records settlements per account", () => {
   });
 });
 
-describe("R2c: checker I1 uses bank account view", () => {
+describe("I1 reads the bank's account view", () => {
   it("detects overpayment from bank records even when our store looks correct", async () => {
     // Simulate: our store shows one CONFIRMED payment for inv-1 (100 cents)
     // but the bank settled 200 cents to their account (double send slipped through)

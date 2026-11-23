@@ -211,7 +211,7 @@ async function runScenario(seed: number, opts: ReturnType<typeof parseArgs>) {
 
   // Fake clock: starts at 0. now() advances 1ms per call for call ordering;
   // sleep(ms) must advance by exactly ms, or time-based logic (settle window,
-  // backoff) can never elapse and its paths are silently dead (R3).
+  // backoff) can never elapse and its paths are silently dead.
   let now = 0;
   const clock = { now: () => now++, sleep: async (ms: number) => { now += ms; } };
 

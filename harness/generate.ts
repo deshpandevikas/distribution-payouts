@@ -90,7 +90,7 @@ export function generate(seed: number, opts: GenerateOptions = {}): Scenario {
       name: `Investor ${i}`,
       bankDetails: `routing:${seed}:${i}`,
     };
-    // Basis units: 1–1000, some investors may have 0 (edge case).
+    // Basis units: 1 to 1000, some investors may have 0 (edge case).
     const basisUnits = Math.floor(rand() * 1001);
     allocationInputs.push({ investor, basisUnits });
   }
@@ -108,12 +108,12 @@ export function generate(seed: number, opts: GenerateOptions = {}): Scenario {
   // Status-visibility lag for a deterministic subset of seeds: the bank has the
   // record but reports NOT_FOUND for the first checks. That is what exercises
   // the settle-window wait-then-resend path in the default sweep, instead of
-  // only inside tuned break-it configs (C3).
+  // only inside tuned break-it configs.
   if (opts.bankConfig?.lagChecks === undefined) {
     bankConfig.lagChecks = seed % 7 === 0 ? 2 : 0;
   }
 
-  // F1: a notification is not guaranteed either. Vary the bank by seed so the
+  // A notification is not guaranteed either. Vary the bank by seed so the
   // default sweep covers the paths that only exist when it is lost or late -
   // above all a status query actually issued from UNKNOWN.
   if (opts.bankConfig?.asyncDropRate === undefined && opts.bankConfig?.asyncDelayChecks === undefined) {
@@ -149,7 +149,7 @@ export function generate(seed: number, opts: GenerateOptions = {}): Scenario {
   const runnerConfig: RunnerConfig = {
     ...DEFAULT_RUNNER_CONFIG,
     // Use the real settle window (DEFAULT_RUNNER_CONFIG): a zero window meant
-    // the "wait, then resend" branch never ran in any scenario (C3).
+    // the "wait, then resend" branch never ran in any scenario.
     ...(opts.runnerConfig ?? {}),
   };
 

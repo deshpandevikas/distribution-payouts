@@ -1,5 +1,5 @@
 /**
- * Property-based invariant tests (I1–I5).
+ * Property-based invariant tests (I1 to I5).
  *
  * Uses fast-check to generate random seeds, runs each scenario through
  * the full pipeline, and asserts all invariants hold.

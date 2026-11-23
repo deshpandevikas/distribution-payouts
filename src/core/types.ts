@@ -73,7 +73,7 @@ export interface Payment {
   idempotencyKey: IdempotencyKey;
   /** Snapshotted bank routing details at time of payment creation. */
   bankDetails: string;
-  /** Increments on reissue (Phase 1.5). Always 1 in Phase 1. */
+  /** Increments on a reissue. Always 1 for a first instruction. */
   instructionNo: number;
   state: PaymentState;
   /** Number of transient retries attempted so far. */
@@ -140,7 +140,7 @@ export interface Investor {
   id: InvestorId;
   /** Display name  -  always fake. */
   name: string;
-  /** Bank routing details  -  opaque string in Phase 1. */
+  /** Bank routing details. Opaque to the core. */
   bankDetails: string;
 }
 
@@ -168,8 +168,8 @@ export interface Distribution {
 // ---------------------------------------------------------------------------
 
 export interface RunnerConfig {
-  /** Max transient retries before moving to FAILED. Default 3. */
-  maxTransientRetries: number;
+  /** Sends allowed before FAILED: the first send plus its retries. Default 3. */
+  maxSendAttempts: number;
   /** Base backoff in ms (doubles each retry, with jitter). Default 1000. */
   backoffBaseMs: number;
   /** Settle window in ms: how long to wait before resending a NOT_FOUND. Default 120_000. */
@@ -179,7 +179,7 @@ export interface RunnerConfig {
   /** Max cumulative status checks per payment before CHECKS_EXHAUSTED. Default 5. */
   maxStatusChecks: number;
 
-  // --- "break it" flags (Phase 1 harness) ---
+  // --- "break it" flags: each one plants a bug the checker must catch ---
   /** If true, skip writing intent before bank call. Makes I5 fail. */
   skipIntentRecord: boolean;
   /** If true, treat BANK_TIMEOUT as BANK_REJECTED_PERMANENT. Makes I2 fail. */
@@ -195,7 +195,7 @@ export interface RunnerConfig {
 }
 
 export const DEFAULT_RUNNER_CONFIG: RunnerConfig = {
-  maxTransientRetries: 3,
+  maxSendAttempts: 3,
   backoffBaseMs: 1000,
   settleWindowMs: 120_000,
   perPaymentMaxCents: 1_000_000_000,

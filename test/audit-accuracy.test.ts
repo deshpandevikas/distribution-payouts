@@ -1,5 +1,5 @@
 /**
- * R5 regression tests: audit log records events that did not happen.
+ * The audit log must record the event that happened, not a nearby one.
  *
  *   (a) NOT_FOUND inside settle window audited as BANK_TIMEOUT (wrong event)
  *   (b) Transient retries exhausted audited as BANK_REJECTED_PERMANENT (wrong event)
@@ -31,7 +31,7 @@ function makeRunner(store: MemoryStore, bank: FakeBank, config = {}) {
   });
 }
 
-describe("R5a: NOT_FOUND inside settle window audited as correct event", () => {
+describe("a NOT_FOUND inside the settle window is audited as itself", () => {
   it("audit shows STATUS_NOT_FOUND_IN_WINDOW, not BANK_TIMEOUT, when inside settle window", async () => {
     // Bank: timeout on send (-> UNKNOWN), status returns NOT_FOUND (inside window)
     const bank = new FakeBank({ next: () => 0.5 }, {
@@ -44,7 +44,7 @@ describe("R5a: NOT_FOUND inside settle window audited as correct event", () => {
     });
 
     // R5a is about the status path, not about late async events. Hold the bank's
-    // async events back so C6's mid-flight drain does not resolve the payment
+    // async events back so the mid-flight drain does not resolve the payment
     // before the first status query.
     bank.drainAsyncEvents = () => [];
 
@@ -57,8 +57,6 @@ describe("R5a: NOT_FOUND inside settle window audited as correct event", () => {
 
     const audit = store.listAudit("dist-r5a");
 
-    // Before fix: NOT_FOUND inside window is recorded as BANK_TIMEOUT
-    // After fix: recorded as STATUS_NOT_FOUND_IN_WINDOW
     const wrongEvent = audit.find(e => e.event === "BANK_TIMEOUT" && e.fromState === "UNKNOWN" && e.toState === "UNKNOWN");
     const correctEvent = audit.find(e => e.event === "STATUS_NOT_FOUND_IN_WINDOW");
     expect(wrongEvent).toBeUndefined();
@@ -66,7 +64,7 @@ describe("R5a: NOT_FOUND inside settle window audited as correct event", () => {
   });
 });
 
-describe("R5b: transient retries exhausted audited correctly", () => {
+describe("exhausted retries are audited as exhausted", () => {
   it("audit shows TRANSIENT_RETRIES_EXHAUSTED, not BANK_REJECTED_PERMANENT, when retries exhaust", async () => {
     // Bank: always transient reject -> retries exhaust -> FAILED
     const bank = new FakeBank({ next: () => 0.08 }, {
@@ -77,15 +75,13 @@ describe("R5b: transient retries exhausted audited correctly", () => {
     });
 
     const store = new MemoryStore();
-    const runner = makeRunner(store, bank, { maxTransientRetries: 3, settleWindowMs: 0 });
+    const runner = makeRunner(store, bank, { maxSendAttempts: 3, settleWindowMs: 0 });
 
     const dist = makeDist("dist-r5b", 100, [{ id: "a", basis: 1 }]);
     await runner.run(dist);
 
     const audit = store.listAudit("dist-r5b");
 
-    // Before fix: retries exhausted recorded as BANK_REJECTED_PERMANENT (SENDING->FAILED)
-    // After fix: recorded as TRANSIENT_RETRIES_EXHAUSTED (SENDING->FAILED)
     const wrongEvent = audit.find(e =>
       e.event === "BANK_REJECTED_PERMANENT" && e.fromState === "SENDING" && e.toState === "FAILED"
       && e.reason?.includes("transient retries exhausted"),
@@ -96,7 +92,7 @@ describe("R5b: transient retries exhausted audited correctly", () => {
   });
 });
 
-describe("R5c: zero-cent skip not in payment audit", () => {
+describe("a zero-cent skip leaves no payment audit row", () => {
   it("zero-cent allocation does not produce a SEND_INTENT_RECORDED audit entry", async () => {
     const bank = new FakeBank({ next: () => 0.5 }, {
       permanentRejectRate: 0, transientRejectRate: 0, timeoutRate: 0, statusTimeoutRate: 0,
@@ -114,8 +110,6 @@ describe("R5c: zero-cent skip not in payment audit", () => {
 
     const audit = store.listAudit("dist-r5c");
 
-    // Before fix: zero-cent skip produces a SEND_INTENT_RECORDED audit entry
-    // After fix: zero-cent skip produces no payment audit entry
     const zeroCentAudit = audit.find(e =>
       e.investorId === "inv-b" && e.event === "SEND_INTENT_RECORDED",
     );

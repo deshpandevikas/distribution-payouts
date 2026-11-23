@@ -1,5 +1,5 @@
 /**
- * F4: the page's promises, as tests.
+ * The page's promises, as tests.
  *
  * site/replay.ts has no DOM, so these run in plain Node: the same seed repeats
  * exactly, a normal run keeps every invariant, and a break-it flag produces a

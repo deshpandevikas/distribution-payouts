@@ -19,7 +19,7 @@ says failed, an event for a payment we never sent).
 
 **Find it.** `list_manual_review` with the `distributionId`. Then `explain_payment` with the
 `paymentId`: it gives the event that arrived, the state it arrived in, the runner's own reason
-("ASYNC_CONFIRM on FAILED — contradiction, investigate"), and the trail in order.
+(the runner's own reason, for example ASYNC_CONFIRM on FAILED, which marks a contradiction), and the trail in order.
 
 **Read the reason before the amounts.** The reason tells you which of two situations you are
 in:
@@ -33,10 +33,10 @@ in:
 **Decide.**
 
 1. Ask the bank (statement, portal, support) whether the key settled.
-2. If it **did** settle, our record is wrong — the reconciliation report shows this as
+2. If it **did** settle, our record is wrong: the reconciliation report shows this as
    `STATE_MISMATCH` for that key. Correct it out of band and record why.
 3. If it **did not** settle, re-paying is a new instruction: new `instructionNo`, therefore a
-   new key, and a human decision. Do not reuse the old key by hand — that is exactly the
+   new key, and a human decision. Do not reuse the old key by hand. That is exactly the
    "blind resend" the system refuses to do.
 4. Record the decision. Whatever the outcome, the reason for the human decision belongs
    somewhere durable.
@@ -70,10 +70,22 @@ record of it, that is a reconciliation problem, not a data-entry problem.
 
 ### `ALLOCATION_SKIPPED`
 
-A zero-cent share produced no payment (decision 13 in `docs/agreed-decisions.md`). Expected
+A zero-cent share produced no payment (decision 9 in [DECISIONS.md](DECISIONS.md)). Expected
 whenever a tiny basis rounds down to zero: the investor is still recorded, just not paid.
-No action, unless the count is surprising — then check the allocation basis, since rounding
+No action, unless the count is surprising. Then check the allocation basis, since rounding
 happens by largest remainder and a wrong basis unit is what usually moves the boundary.
+
+## Harness variants
+
+```bash
+npm run harness -- --seed=42 --verbose          # one seed, per-run metrics
+npm run harness -- --scenarios=200 --store=sqlite
+npm run harness -- --break-it=newKeyOnRetry     # must exit 1
+npm run harness -- --no-status-query            # bank that cannot answer status
+```
+
+Exit code matters: **0** means every invariant held, **1** means a real violation was caught,
+**2** means the harness itself failed (bad flag, uncaught exception). A crash is not a catch.
 
 ## A red CI run
 
@@ -85,8 +97,8 @@ Steps run in order; the first failure is the one that matters.
 | `Type check` | A real type error. Nothing to interpret. |
 | `Unit and property tests` | A failing `store-contract` test means the two stores diverged; `sqlite-crash` means durability broke; `temporal` means determinism or activity idempotency broke; `core-no-node-imports` means a Node import crept into `src/core` (which would also break the page build). |
 | `Harness fixed seeds` | A deterministic regression on a seed in `1,2,3,42,100,999,1234,5678,9999,10000`. Reproduce locally with that seed and `--verbose` before changing anything. |
-| `Harness on the SQLite store` | Rules hold in memory but not once persisted — look for a transaction boundary or a missing constraint, not a logic bug. |
-| `Break-it flags each fail an invariant` | This step asserts **exit 1** for each of the five flags. Exit **0** means the flag stopped breaking anything (the bug moved, or the bank config drifted); exit **2** means the harness crashed — an exception is not a catch. Both fail the step. |
+| `Harness on the SQLite store` | Rules hold in memory but not once persisted: look for a transaction boundary or a missing constraint, not a logic bug. |
+| `Break-it flags each fail an invariant` | This step asserts **exit 1** for each of the five flags. Exit **0** means the flag stopped breaking anything (the bug moved, or the bank config drifted); exit **2** means the harness crashed. An exception is not a catch. Both fail the step. |
 
 The Pages workflow is separate. If `site:build` fails, the core probably stopped being
 browser-safe; the `core-no-node-imports` test usually fails first and says which import.
@@ -122,7 +134,7 @@ On the page: https://deshpandevikas.github.io/distribution-payouts/
 | `asyncDropRate` | Chance a notification is lost entirely. |
 | `flag` | One break-it flag, or empty. |
 
-Example: `?seed=42&flag=newKeyOnRetry` — the run ends with a violated invariant and the page
+Example: `?seed=42&flag=newKeyOnRetry`. The run ends with a violated invariant and the page
 prints which one. Set `timeoutRate=1` to make timeouts certain.
 
 ## A stuck Temporal run
@@ -136,6 +148,6 @@ The worker and MCP server read the same `SQLITE_PATH`, so inspect the store whil
 waits. With the Temporal CLI, `temporal workflow describe` shows pending activities.
 
 If the worker is being restarted, let it shut down: `Worker.shutdown()` waits for in-flight
-activities, and a kill mid-activity leaves Temporal to retry it. That retry is safe — the
-activities are at-least-once and `recordEvent` is idempotent — but a kill makes the run take
-longer and shows up as activity retries in the history.
+activities, and a kill mid-activity leaves Temporal to retry it. That retry is safe, because
+the activities are at-least-once and `recordEvent` is idempotent, but a kill makes the run
+take longer and shows up as activity retries in the history.

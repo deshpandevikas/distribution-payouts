@@ -180,7 +180,7 @@ export function createTemporalRuntimeQueue(opts: TemporalRuntimeOptions): Tempor
       nowMs: number,
     ): Promise<{ key: IdempotencyKey; response: BankSendResponse }> {
       const payment = mustGet(id);
-      // Break-it: a new key per retry is exactly the bug F3 has to be able to
+      // Break-it: a new key per retry is exactly the bug this path has to
       // reproduce, so the flag is honoured here too.
       const retryNo = config.newKeyOnRetry
         ? payment.transientRetries + Math.max(0, activityAttempt() - 1)
@@ -238,7 +238,7 @@ export function createTemporalRuntimeQueue(opts: TemporalRuntimeOptions): Tempor
           return recordEvent(id, { type: "BANK_TIMEOUT" });
         case "REJECTED_TRANSIENT": {
           const nextRetries = payment.transientRetries + 1;
-          if (nextRetries >= config.maxTransientRetries) {
+          if (nextRetries >= config.maxSendAttempts) {
             opts.store.savePayment({ ...payment, transientRetries: nextRetries });
             return recordEvent(id, {
               type: "TRANSIENT_RETRIES_EXHAUSTED",

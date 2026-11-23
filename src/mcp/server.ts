@@ -1,5 +1,5 @@
 /**
- * Read-only MCP server over the SQLite store (F2).
+ * Read-only MCP server over the SQLite store.
  *
  * The card's rule is absolute: no tool writes, ever. That is enforced three
  * ways - the handler only calls Store read methods, the tool list is a fixed

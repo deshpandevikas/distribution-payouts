@@ -1,5 +1,5 @@
 /**
- * R4 regression tests:
+ * Late bank events:
  *   (a) Timeout that resolves CONFIRMED never queues ASYNC_CONFIRM - only lying transients do
  *   (b) No duplicate-confirm rate
  *   (c) Async events drained only once at end, not mid-run
@@ -19,7 +19,7 @@ function makeDist(id: string, totalCents: number, bankDetails = "routing:test"):
   return { id, totalCents, allocations, createdAt: 0 };
 }
 
-describe("R4a: timeout with async CONFIRMED queues ASYNC_CONFIRM", () => {
+describe("a timeout with an async confirmation", () => {
   it("a timeout that resolves CONFIRMED queues an ASYNC_CONFIRM event", async () => {
     // Force 100% timeout, 100% async confirm
     const bank = new FakeBank({ next: () => 0.5 }, {
@@ -33,14 +33,12 @@ describe("R4a: timeout with async CONFIRMED queues ASYNC_CONFIRM", () => {
 
     await bank.send("key-t", 100, "routing:test");
 
-    // Before fix: drainAsyncEvents() returns [] for timeout outcomes
-    // After fix: drainAsyncEvents() returns [{key: "key-t", type: "ASYNC_CONFIRM"}]
     const events = bank.drainAsyncEvents();
     expect(events.some(e => e.key === "key-t" && e.type === "ASYNC_CONFIRM")).toBe(true);
   });
 });
 
-describe("R4b: duplicate confirm rate", () => {
+describe("a duplicate confirmation", () => {
   it("FakeBank supports a duplicateConfirmRate config option", async () => {
     const bank = new FakeBank({ next: () => 0.5 }, {
       permanentRejectRate: 0,
@@ -52,14 +50,12 @@ describe("R4b: duplicate confirm rate", () => {
 
     await bank.send("key-dup", 100, "routing:test");
 
-    // Before fix: no duplicateConfirmRate exists, drainAsyncEvents() returns []
-    // After fix: drainAsyncEvents() returns the duplicate ASYNC_CONFIRM
     const events = bank.drainAsyncEvents();
     expect(events.some(e => e.key === "key-dup" && e.type === "ASYNC_CONFIRM")).toBe(true);
   });
 });
 
-describe("R4c: async events drained mid-run at seeded random points", () => {
+describe("events are delivered mid-run, not only at the end", () => {
   it("runner delivers async events before the run ends (mid-run drain)", async () => {
     // A lying transient queues ASYNC_CONFIRM. If drained only at the end, the
     // payment may already be FAILED from retries, and the confirm arrives post-terminal.
@@ -107,13 +103,11 @@ describe("R4c: async events drained mid-run at seeded random points", () => {
 
     await runner.run(dist);
 
-    // Before fix: drainCallCount === 1 (only at end)
-    // After fix: drainCallCount > 1 (mid-run drains too)
     expect(drainCallCount).toBeGreaterThan(1);
   });
 });
 
-describe("R4d: unknown-key async event alerts instead of silent drop", () => {
+describe("an event for a key we never sent raises an alert", () => {
   it("ASYNC_CONFIRM for a key the runner never sent records an alert for the distribution", async () => {
     // Manually inject an async event for an unknown key
     const bank = new FakeBank({ next: () => 0.5 }, {
@@ -138,8 +132,7 @@ describe("R4d: unknown-key async event alerts instead of silent drop", () => {
     const dist = makeDist("dist-r4d", 100);
     await runner.run(dist);
 
-    // Before fix: ghost event silently dropped.
-    // C4: recorded as an alert keyed to the real distribution, not as a
+    // Recorded as an alert keyed to the real distribution, not as a
     // fabricated CREATED -> MANUAL_REVIEW audit row for a payment that does not
     // exist - such a row was invisible from listAudit("dist-r4d"), which is the
     // only query an operator makes.
