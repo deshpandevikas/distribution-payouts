@@ -43,7 +43,7 @@ describe("a NOT_FOUND inside the settle window is audited as itself", () => {
       lagChecks: 1,         // one NOT_FOUND check inside window
     });
 
-    // R5a is about the status path, not about late async events. Hold the bank's
+    // This case is about the status path, not late async events. Hold the bank's
     // async events back so the mid-flight drain does not resolve the payment
     // before the first status query.
     bank.drainAsyncEvents = () => [];
