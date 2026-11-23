@@ -1,7 +1,7 @@
 Payment behavior
 1. States: CREATED, SENDING, CONFIRMED, FAILED, UNKNOWN, MANUAL_REVIEW (RETURNED in Phase 1.5).
 2. Intent (SENDING) is persisted before calling the bank. Restart in SENDING = status check, never blind resend.
-3. Idempotency key = hash(distributionId, investorId, instructionNo). Retries reuse it; reissue increments instructionNo.
+3. Idempotency key = readable string distributionId:investorId:instructionNo (not a hash). Retries reuse it; reissue increments instructionNo.
 4. Fake bank dedupes on key and has a status query; status query can be switched off.
 5. Status NOT_FOUND: wait a settle window (configurable), then resend with the SAME key.
 6. Duplicate confirm on CONFIRMED = no-op + log. Confirm on FAILED = MANUAL_REVIEW + alert. Never override silently.

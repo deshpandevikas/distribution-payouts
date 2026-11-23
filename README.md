@@ -3,7 +3,7 @@
 One distribution, many investors, pro-rata cents, one bank payment each. The arithmetic is
 the easy part. The hard part starts when the bank call times out: **did the money move?**
 
-This is a learning project about that question. It builds a small payout runner, then tries
+This project starts from that question. It builds a small payout runner, then tries
 hard to break it: a deterministic fake bank that loses notifications and lies about
 transient rejections, crash injection, an invariant checker that reads only outputs, 2,000
 randomized scenarios per harness run, and five bugs that the harness must catch (exit 1, not
@@ -71,7 +71,7 @@ operator can inspect what the worker wrote.
 | `src/temporal/` | Durable orchestration: one workflow per distribution, all I/O in activities. |
 | `src/mcp/` | Read-only MCP tools for an operator or an agent. |
 | `site/` | Browser replay: same core code, bundled. |
-| `test/` | 26 files, including store-contract, SIGKILL crash, Temporal replay and MCP tests. |
+| `test/` | 28 files, including store-contract, SIGKILL crash, Temporal replay and MCP tests. |
 
 ## Future work: returns
 

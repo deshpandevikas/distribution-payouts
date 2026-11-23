@@ -9,7 +9,7 @@ cost of being wrong, one-way or two-way door.
 
 ## 2. Intent persisted before bank call; restart in SENDING = status check, never blind resend
 
-## 3. Idempotency key = hash(distributionId, investorId, instructionNo)
+## 3. Idempotency key = readable string distributionId:investorId:instructionNo (not a hash)
 
 ## 4. Fake bank dedupes on key; status query switchable
 
