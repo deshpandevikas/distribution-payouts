@@ -2,6 +2,10 @@
 
 A payout runner for a fund paying its investors. The hard part is not the math, it is a bank call that times out: did the money move?
 
+## Why I built this
+
+Writing code is no longer the scarce part. Deciding what correct means, and proving it, still is. I picked payouts because one question makes them hard: the bank timed out, so did the money move? I also wanted to learn Temporal, and to practice reviewing code I did not type.
+
 ## Try it
 
 [The replay page](https://deshpandevikas.github.io/distribution-payouts/). Six stories, about 30 seconds.
@@ -10,17 +14,17 @@ A payout runner for a fund paying its investors. The hard part is not the math, 
 
 ## Results
 
-- **172 tests passing** across 28 files: unit, property, store contract, SIGKILL crash, Temporal replay, MCP, page.
-- **2,000 random scenarios** against a bank that loses notifications, lies, times out and crashes the process: **0 double payments, 0 lost cents**.
-- **98.1% of payments completed with no human involved** (20,811 payments, 392 of them reached MANUAL_REVIEW).
-- **5 of 5 planted bugs caught.** The harness exits 1 for a caught violation and 2 for a crash, and CI accepts only 1, because a crash is not a catch.
+- **172** tests passing across 28 files: unit, property, store contract, SIGKILL crash, Temporal replay, MCP, page.
+- **2,000** random scenarios against a bank that loses notifications, lies, times out and crashes the process: 0 double payments, 0 lost cents.
+- **98.1%** of payments completed with no human involved (20,811 payments, 392 of them reached MANUAL_REVIEW).
+- **5 of 5** planted bugs caught. The harness exits 1 for a caught violation and 2 for a crash, and CI accepts only 1, because a crash is not a catch.
 
 ## The idea in five lines
 
-1. Write the intent (SENDING) **before** calling the bank, so a crash leaves a trace.
+1. Write the intent (SENDING) before calling the bank, so a crash leaves a trace.
 2. A timeout means UNKNOWN, never FAILED: the money may have moved.
 3. Never resend blind. Check the status of the idempotency key first.
-4. NOT_FOUND inside the settle window is probably lag, so wait and then resend the **same key**.
+4. NOT_FOUND inside the settle window is probably lag, so wait and then resend the same key.
 5. When the bank contradicts itself, stop and put a human in front of it.
 
 ## Where to read next
@@ -68,6 +72,8 @@ More variants, crash injection and single-seed replay are in [RUNBOOK.md](RUNBOO
 ## How this was built
 
 I used coding agents for most of the typing. I set the scope, decided every state transition and invariant, and reviewed each change. The review mattered: the first test harness passed while hiding three real bugs (retries that could never succeed, a restart that resent blindly, and a wait-then-resend path that never ran), and a later review caught a Temporal clock bug that the tests did not. Each fix landed as a failing test first, then the fix.
+
+The moment that stuck with me: the harness was green early on, and I almost moved on. Then I made the fake bank meaner and three bugs showed up that had been there all along. Since then I don't trust a test until I have seen it fail. The replay page went the same way. The first time I looked at it as a visitor, I could not tell what it was showing me, so it was rebuilt around six short stories.
 
 ## Not built, on purpose
 

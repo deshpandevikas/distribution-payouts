@@ -5,12 +5,13 @@ and how costly it is to reverse.
 
 ## 1. A timeout means UNKNOWN, never FAILED
 
-**Why:** a timeout tells us nothing about the money. The bank may have paid. Marking it
-FAILED invites someone to pay again, which is the one mistake this system must never make.
-**Considered:** treat a timeout as failed and retry (simple, and it pays twice).
-**Would change my mind:** a bank that guarantees a timed-out request was never processed.
-None I know of does.
-**Reversal cost:** high. Every state after this one depends on it.
+This is the decision the whole project hangs on. A timeout tells you nothing about the money. The
+bank may have paid. If we call it FAILED, sooner or later someone helpfully pays again, and that is
+the one mistake this system exists to prevent. The status checks, the settle window and the human
+queue are all here because of this rule.
+
+I would only change it for a bank that guarantees a timed-out request was never processed. I have
+not met one. Reversing it would be expensive, because every later state assumes it.
 
 ## 2. Record the intent before calling the bank
 
@@ -44,27 +45,24 @@ not physics, and are configurable.
 
 ## 5. The bank's status answer is the truth; notifications are hints
 
-**Why:** notifications get lost, delayed and duplicated. The status query is what decides.
-A notification can move a payment forward early, but it is never required, so a lost one
-cannot lose money. If a notification and the status disagree, that is a contradiction, and
-decision 6 applies.
-**Considered:** notifications as the only source (simpler, and blind when one is lost).
-**Would change my mind:** a bank whose status endpoint is less reliable than its notifications.
-**Reversal cost:** medium.
+Notifications arrive late, twice, or never. The harness drops and delays them on purpose, and that
+made this an easy call. A notification can move a payment forward early, but nothing waits on one.
+The status query decides. If the two disagree, that is decision 6.
+
+I would rethink this only for a bank whose status endpoint is less reliable than its notifications.
 
 ## 6. Contradictions go to a human, and the system stops touching that payment
 
-**Why:** a confirm after we marked it FAILED, a failure after CONFIRMED, or an event for a
-payment we never sent. Each means our picture of the money is wrong. Any automatic choice
-risks paying twice or leaving an investor unpaid. MANUAL_REVIEW is final for automation, so
-a human and the system never race on the same payment.
-A reply that confirms a different amount or account would also belong here. It is not built
-yet, because nothing compares the bank's echo against what we sent.
-**Considered:** let the latest event win (silently flips money states), or ignore late events
-(hides real payments).
-**Would change my mind:** volume. If humans cannot keep up, automate the safest sub-case
-first, with an audit trail.
-**Reversal cost:** low to loosen later, high if loosened too early.
+A confirm after we marked it FAILED. A failure after CONFIRMED. An event for a payment we never
+sent. Each one means our picture of the money is wrong, and any automatic guess either pays twice
+or leaves someone unpaid. So the system stops and a person looks.
+
+MANUAL_REVIEW is final for automation on purpose. I would rather an operator be slow than have the
+operator and the code fighting over the same payment.
+
+A reply that confirms a different amount or account belongs here too. That check is not built yet.
+If review volume ever outgrows the people doing it, I would automate the safest case first, with an
+audit trail, and nothing else.
 
 ## 7. "Try later" rejections get 3 attempts in total, then FAILED
 
@@ -104,13 +102,16 @@ with a list, and reconciliation reports mismatches but never auto-fixes them.
 
 ## 11. Tests must prove they can fail
 
-**Why:** the first harness passed while hiding three bugs, because the fake bank
-was too kind. So each invariant has a planted bug that must make it fail. The harness exits
-1 for a caught violation and 2 for a crash, and CI accepts only 1, because a crash is not a
-catch. The checker keeps its own copy of the state table, so a bug in the runner cannot
-grade itself.
-**Considered:** coverage numbers alone (they show code ran, not that it was checked).
-**Reversal cost:** none. This only adds confidence.
+This one came from getting burned. The first harness passed while hiding three real
+bugs, because its fake bank was too kind and its clock ignored sleep. Green meant nothing.
+
+Now every invariant has a planted bug that has to turn it red, and CI checks that it does. A crash
+does not count as a catch: the harness exits 1 for a caught violation and 2 for a crash, and CI
+accepts only 1. The checker keeps its own copy of the state table, so the runner cannot grade its
+own homework.
+
+Coverage numbers would not have caught any of this. They show that code ran, not that anything
+checked it.
 
 ## 12. Small, swappable infrastructure
 
@@ -142,3 +143,9 @@ grade itself.
 2. Maker-checker approval above a threshold, and identity holds before any money moves.
 3. Compare the bank's echo of amount and account, and route mismatches to a human.
 4. Postgres adapter and a real bank sandbox, run against the same checker.
+
+## What I would do differently
+
+- Make the fake bank mean on day one. A friendly fake is worse than none, because it hands out green checks.
+- Build the page a visitor sees early. I built the replay page as a debugging tool and had to rebuild it once I tried to explain it.
+- Review the edges first. The two bugs that got past the tests, a Temporal clock and a writable MCP database, were both where the code touches the outside world.
