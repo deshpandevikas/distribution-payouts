@@ -111,7 +111,7 @@ export class Runner {
       let payment = this.store.getPaymentByKey(key);
 
       if (!payment) {
-        // Zero-cent allocations: no payment, but recorded per agreed-decisions.md #13.
+        // Zero-cent allocations: no payment, but recorded so the split still sums to the total.
         // A console.log is not a record - put it in the alerts list where an
         // operator querying the distribution can see it.
         if (allocation.amountCents === 0) {
@@ -152,7 +152,7 @@ export class Runner {
 
     // Resume any payments that were in-flight (SENDING/UNKNOWN) from a prior run.
     // Track recovered payment IDs so processPayment can route SENDING to status check
-    // instead of blind resend (agreed-decisions.md #2).
+    // instead of a blind resend.
     const recoveredIds = new Set<PaymentId>();
     for (const id of paymentIds) {
       const payment = this.store.getPayment(id)!;
@@ -191,7 +191,7 @@ export class Runner {
     const MAX_ITERATIONS = 1000; // hard safety cap against infinite loops
     let iterations = 0;
     // On first iteration of a recovered SENDING payment, status-check first.
-    // Never blind resend on restart (agreed-decisions.md #2).
+    // Never resend blind on restart.
     let firstIter = true;
     while (!TERMINAL_STATES.has(payment.state)) {
       if (++iterations > MAX_ITERATIONS) {

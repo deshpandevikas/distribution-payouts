@@ -1,5 +1,5 @@
 /**
- * Reconciliation report (agreed-decisions.md #12).
+ * Reconciliation report.
  *
  * Runs after a distribution completes. Compares our store's view of the world
  * against the bank's settled records and reports discrepancies.

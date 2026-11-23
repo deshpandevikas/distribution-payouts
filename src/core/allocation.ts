@@ -2,7 +2,7 @@
  * Allocation: distribute a total amount (integer cents) across investors
  * pro rata by their basis units.
  *
- * Algorithm (agreed-decisions.md #9):
+ * Algorithm:
  *   1. Compute floor = floor(totalCents * basisUnits / sumBasis) using integer division.
  *   2. Compute remainder = (totalCents * basisUnits) % sumBasis (integer, no float).
  *   3. Distribute leftover cents one at a time to investors with the largest remainders.
@@ -15,7 +15,7 @@
  *   - No floats in output - all values are integer cents.
  *   - Throws AllocationError on empty inputs, negative basis, duplicate ids,
  *     or all-zero basis with nonzero total (money would vanish silently).
- *   - Zero-cent shares are included in output for logging per agreed-decisions.md #13.
+ *   - Zero-cent shares stay in the output so the split can be logged and summed.
  *   - No randomness, no I/O - pure function.
  */
 
