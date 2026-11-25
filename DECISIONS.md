@@ -1,7 +1,6 @@
 # Decisions
 
-Each entry: what was decided, why, what else was considered, what would change my mind,
-and how costly it is to reverse.
+Each entry says what was decided and why. Most also say what else was considered, what would change my mind, and how costly it is to reverse.
 
 ## 1. A timeout means UNKNOWN, never FAILED
 

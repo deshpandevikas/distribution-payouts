@@ -4,7 +4,7 @@ A payout runner for a fund paying its investors. The hard part is not the math, 
 
 ## Why I built this
 
-Writing code is no longer the scarce part. Deciding what correct means, and proving it, still is. I picked payouts because one question makes them hard: the bank timed out, so did the money move? I also wanted to learn Temporal, and to practice reviewing code I did not type.
+Writing code is no longer the scarce part. Deciding what correct means, and proving it, still is. I picked payouts because that timeout question is one every payments team has to answer. I also wanted to learn Temporal, and to practice reviewing code I did not type.
 
 ## Try it
 
@@ -71,9 +71,9 @@ More variants, crash injection and single-seed replay are in [RUNBOOK.md](RUNBOO
 
 ## How this was built
 
-I used coding agents for most of the typing. I set the scope, decided every state transition and invariant, and reviewed each change. The review mattered: a later review caught a Temporal clock bug that the tests did not. Each fix landed as a failing test first, then the fix.
+I used coding agents for most of the typing. I set the scope, decided every state transition and invariant, and reviewed each change. The review mattered: it caught a Temporal clock bug that the tests did not. Each fix landed as a failing test first, then the fix.
 
-The moment that stuck with me: the harness was green early on, and I almost moved on. Then I made the fake bank meaner and three bugs showed up (retries that could never succeed, a restart that resent blindly, and a wait-then-resend path that never ran) that had been there all along. Since then I don't trust a test until I have seen it fail. The replay page went the same way. The first time I looked at it as a visitor, I could not tell what it was showing me, so it was rebuilt around six short stories.
+The moment that stuck with me: the harness was green early on, and I almost moved on. Then I made the fake bank meaner, and three bugs that had been there all along showed up: retries that could never succeed, a restart that resent blindly, and a wait-then-resend path that never ran. Since then I don't trust a test until I have seen it fail. The replay page went the same way. The first time I looked at it as a visitor, I could not tell what it was showing me, so it was rebuilt around six short stories.
 
 ## Not built, on purpose
 
